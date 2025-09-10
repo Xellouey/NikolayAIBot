@@ -42,14 +42,15 @@ DEFAULT_TEXTS = {
         'Вставьте JSON в поле ниже. Если поле пустое — клавиатура не будет добавлена.'
     ),
     'mail.buttons.copy_json': '📋 Скопировать пример JSON',
-    'mail.messages.json_example': (
+    'mail.messages.json_example_inline': (
         '{\n'
         '  "inline_keyboard": [\n'
         '    [ {"text": "🌐 Открыть сайт", "url": "https://example.com"} ],\n'
         '    [ {"text": "💬 Поддержка", "callback_data": "support"} ]\n'
         '  ]\n'
-        '}\n\n'
-        'Обычная клавиатура:\n'
+        '}'
+    ),
+    'mail.messages.json_example_keyboard': (
         '{\n'
         '  "keyboard": [\n'
         '    ["🛒 Купить", "💬 Поддержка"],\n'
@@ -59,6 +60,8 @@ DEFAULT_TEXTS = {
         '  "one_time_keyboard": false\n'
         '}'
     ),
+    'mail.buttons.copy_inline': '📋 Скопировать Inline-клавиатуру',
+    'mail.buttons.copy_keyboard': '⌨️ Скопировать обычную клавиатуру',
 }
 
 
