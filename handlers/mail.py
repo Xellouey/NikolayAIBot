@@ -11,10 +11,11 @@ from aiogram.fsm.context import FSMContext
 from states import FSMMail
 from database import mail
 from mail import mailing
+from localization import get_text
 
 
 logging.basicConfig(
-    level=logging.ERROR,
+    level=logging.INFO,
     format="%(asctime)s - %(levelname)s - %(name)s - %(filename)s - %(message)s",
     # filename='file.log'
 )
@@ -33,7 +34,17 @@ async def mailingFirstLine(call: types.CallbackQuery, state: FSMContext):
     
     
 @router.message(FSMMail.date_mail)
-async def takeMailDatetime(message: types.Message, state: FSMMail):
+async def takeMailDatetime(message: types.Message, state: FSMContext):
+    logging.info(f"FSMMail.date_mail: получено сообщение: '{message.text}'")
+    
+    # Обработка отмены
+    if message.text and message.text == '❌ Отмена':
+        logging.info("Кнопка отмены нажата в date_mail")
+        await state.clear()
+        await message.answer('❌ Рассылка отменена', reply_markup=kb.markup_remove())
+        await message.answer('Выберите действие:', reply_markup=kb.markup_admin(message.from_user.id))
+        return
+    
     if message.text == '➡️ Пропустить':
         # Для немедленной отправки - время на 10 секунд в прошлом
         date_mail = dt.now() - timedelta(seconds=10)
@@ -47,13 +58,58 @@ async def takeMailDatetime(message: types.Message, state: FSMMail):
             return 
         
     await state.update_data(date_mail=date_mail)
-    await state.set_state(FSMMail.message)
+    await state.set_state(FSMMail.media)
     
-    await message.answer('👉 Отправьте ваше сообщение:', reply_markup=kb.markup_cancel())
+    await message.answer('📷 Отправьте фото или видео для рассылки или нажмите "Пропустить"', reply_markup=kb.markup_pass())
 
     
+@router.message(FSMMail.media)
+async def takeMailMedia(message: types.Message, state: FSMContext):
+    """Принимаем фото/видео или пропуск"""
+    logging.info(f"📷 FSMMail.media: получено сообщение: '{message.text}'")
+    
+    # Обработка отмены
+    if message.text and message.text == '❌ Отмена':
+        logging.info("✅ Кнопка отмены нажата в media")
+        await state.clear()
+        await message.answer('❌ Рассылка отменена', reply_markup=kb.markup_remove())
+        await message.answer('Выберите действие:', reply_markup=kb.markup_admin(message.from_user.id))
+        return
+    
+    media = None
+    media_type = None
+
+    # Проверяем тип вложений
+    if message.photo:
+        media = message.photo[-1].file_id  # наибольшее качество
+        media_type = 'photo'
+    elif message.video:
+        media = message.video.file_id
+        media_type = 'video'
+    elif message.text and message.text == '➡️ Пропустить':
+        media = None
+        media_type = None
+    else:
+        await message.answer('❌ Отправьте фото/видео или нажмите "Пропустить"', reply_markup=kb.markup_pass())
+        return
+
+    await state.update_data(media=media, media_type=media_type)
+    await state.set_state(FSMMail.message)
+    await message.answer('👉 Отправьте ваше сообщение:', reply_markup=kb.markup_cancel())
+
+
 @router.message(FSMMail.message)
-async def takeMailMessage(message: types.Message, state: FSMMail):
+async def takeMailMessage(message: types.Message, state: FSMContext):
+    logging.info(f"💬 FSMMail.message: получено сообщение: '{message.text}'")
+    
+    # Обработка отмены
+    if message.text and message.text == '❌ Отмена':
+        logging.info("✅ Кнопка отмены нажата в message")
+        await state.clear()
+        await message.answer('❌ Рассылка отменена', reply_markup=kb.markup_remove())
+        await message.answer('Выберите действие:', reply_markup=kb.markup_admin(message.from_user.id))
+        return
+    
     message_id = message.message_id
     from_id = message.from_user.id
     
@@ -61,44 +117,77 @@ async def takeMailMessage(message: types.Message, state: FSMMail):
     await state.set_state(FSMMail.keyboard)
     
     # Send help message with JSON example and copy button
-    help_text = utils.get_text('mail.messages.mail_help')
-    keyboard_items = [
-        [types.InlineKeyboardButton(text=utils.get_text('mail.buttons.copy_json'), callback_data='copy_json_example')],
-        [types.KeyboardButton(text='➡️ Пропустить'), types.KeyboardButton(text='❌ Отмена')]
-    ]
-    
-    inline_kb = types.InlineKeyboardMarkup(inline_keyboard=[[types.InlineKeyboardButton(text=utils.get_text('mail.buttons.copy_json'), callback_data='copy_json_example')]])
+    help_text = get_text('mail.messages.mail_help')
+    # Кнопки для копирования конкретного примера JSON
+    inline_kb = types.InlineKeyboardMarkup(inline_keyboard=[
+        [types.InlineKeyboardButton(text=get_text('mail.buttons.copy_inline'), callback_data='copy_json_inline')],
+        [types.InlineKeyboardButton(text=get_text('mail.buttons.copy_callback'), callback_data='copy_json_callback')]
+    ])
     reply_kb = types.ReplyKeyboardMarkup(keyboard=[[types.KeyboardButton(text='➡️ Пропустить'), types.KeyboardButton(text='❌ Отмена')]], resize_keyboard=True)
     
     await message.answer(help_text, reply_markup=inline_kb)
     await message.answer('👉 Отправьте клавиатуру в формате JSON или нажмите "Пропустить":', reply_markup=reply_kb)
 
 
-@router.callback_query(F.data == 'copy_json_example')
-async def copy_json_example(call: types.CallbackQuery):
-    """Send JSON example for easy copying"""
+@router.callback_query(F.data == 'copy_json_inline')
+async def copy_json_inline(call: types.CallbackQuery):
+    """Send INLINE JSON example for easy copying"""
     await call.answer()
-    
-    example_json = utils.get_text('mail.messages.json_example')
+    example_json = get_text('mail.messages.json_example_inline')
     await call.message.answer(
-        f'📋 <b>Пример JSON для копирования:</b>\n\n<code>{example_json}</code>\n\nНажмите на текст выше чтобы скопировать'
+        f'📋 <b>Inline-клавиатура (JSON):</b>\n\n<code>{example_json}</code>\n\nНажмите на текст выше чтобы скопировать'
+    )
+
+@router.callback_query(F.data == 'copy_json_callback')
+async def copy_json_callback(call: types.CallbackQuery):
+    """Send callback buttons JSON example for easy copying"""
+    await call.answer()
+    example_json = get_text('mail.messages.json_example_callback')
+    await call.message.answer(
+        f'🔘 <b>Inline-клавиатура с callback (JSON):</b>\n\n<code>{example_json}</code>\n\nНажмите на текст выше чтобы скопировать'
     )
   
     
 @router.message(FSMMail.keyboard)
-async def takeMailkeyboard(message: types.Message, state: FSMMail):    
-    if message.text.lower() == '➡️ пропустить':
+async def takeMailkeyboard(message: types.Message, state: FSMContext):    
+    logging.info(f"⌨️ FSMMail.keyboard: получено сообщение: '{message.text}'")
+    
+    # Обработка отмены
+    if message.text and message.text == '❌ Отмена':
+        logging.info("✅ Кнопка отмены нажата в keyboard")
+        await state.clear()
+        await message.answer('❌ Рассылка отменена', reply_markup=kb.markup_remove())
+        await message.answer('Выберите действие:', reply_markup=kb.markup_admin(message.from_user.id))
+        return
+    
+    if message.text == '➡️ Пропустить':
         keyboard = None
     else:
-        keyboard = message.text
-
+        text = message.text.strip()
+        # Поддержка двух форматов в одном сообщении: если пользователь прислал 2 блока JSON подряд,
+        # вытащим первый валидный JSON из текста.
+        keyboard = None
         try:
-            keyboard = json.loads(keyboard)
-        except:
-            # Show error with copy button again
-            inline_kb = types.InlineKeyboardMarkup(inline_keyboard=[[types.InlineKeyboardButton(text=utils.get_text('mail.buttons.copy_json'), callback_data='copy_json_example')]])
+            # Попытка 1: целиком как JSON
+            keyboard = json.loads(text)
+        except Exception:
+            # Попытка 2: найти первый валидный JSON-объект в тексте
+            import re
+            candidates = re.findall(r"\{[\s\S]*?\}", text)
+            for c in candidates:
+                try:
+                    keyboard = json.loads(c)
+                    break
+                except Exception:
+                    continue
+        if keyboard is None:
+            # Показать две кнопки для примеров снова
+            inline_kb = types.InlineKeyboardMarkup(inline_keyboard=[
+                [types.InlineKeyboardButton(text=get_text('mail.buttons.copy_inline'), callback_data='copy_json_inline')],
+                [types.InlineKeyboardButton(text=get_text('mail.buttons.copy_callback'), callback_data='copy_json_callback')]
+            ])
             await message.answer(
-                '❌ Неверный формат JSON. Попробуйте ещё раз:',
+                '❌ Неверный формат JSON. Попробуйте ещё раз или скопируйте пример выше:',
                 reply_markup=inline_kb
             )
             return
@@ -109,15 +198,42 @@ async def takeMailkeyboard(message: types.Message, state: FSMMail):
     stateData = await state.get_data()
     message_id = stateData['message_id']
     from_id = stateData['from_id']
+    media = stateData.get('media')
+    media_type = stateData.get('media_type')
     
-    await bot.copy_message(message.from_user.id, from_id, message_id, reply_markup=kb.markup_custom(keyboard))
+    # Показываем предпросмотр сообщения
+    if media and media_type:
+        # Получаем текст сообщения
+        text_message = await bot.forward_message(message.from_user.id, from_id, message_id)
+        text = text_message.text or text_message.caption or ''
+        await text_message.delete()
+        
+        # Отправляем медиа с текстом
+        if media_type == 'photo':
+            await bot.send_photo(message.from_user.id, media, caption=text, reply_markup=kb.markup_custom(keyboard))
+        elif media_type == 'video':
+            await bot.send_video(message.from_user.id, media, caption=text, reply_markup=kb.markup_custom(keyboard))
+    else:
+        # Просто копируем сообщение без медиа
+        await bot.copy_message(message.from_user.id, from_id, message_id, reply_markup=kb.markup_custom(keyboard))
+    
     await message.answer('👉 Вы уверены, что хотите разослать это сообщение?', reply_markup=kb.markup_confirm())
     
     
 @router.message(FSMMail.confirm)
 async def takeMailConfirm(message: types.Message, state: FSMContext):
+    logging.info(f"✔️ FSMMail.confirm: получено сообщение: '{message.text}'")
+    
+    # Обработка отмены
+    if message.text and message.text == '❌ Отмена':
+        logging.info("✅ Кнопка отмены нажата в confirm")
+        await state.clear()
+        await message.answer('❌ Рассылка отменена', reply_markup=kb.markup_remove())
+        await message.answer('Выберите действие:', reply_markup=kb.markup_admin(message.from_user.id))
+        return
+    
     try:
-        if message.text.lower() != '✅ да':
+        if message.text != '✅ Да':
             await message.answer('👉 Вы уверены, что хотите разослать это сообщение?', reply_markup=kb.markup_confirm())
             return
     except:
@@ -129,14 +245,23 @@ async def takeMailConfirm(message: types.Message, state: FSMContext):
     message_id = stateData['message_id']
     from_id = stateData['from_id']
     keyboard = stateData['keyboard']
+    media = stateData.get('media')
+    media_type = stateData.get('media_type')
     await state.clear()
 
     date_mail_str = date_mail.strftime('%d.%m.%Y %H:%M')
 
-    await m.create_mail(date_mail, message_id, from_id, keyboard)
+    # Получаем текст сообщения
+    preview_msg = await bot.forward_message(message.from_user.id, from_id, message_id)
+    text = preview_msg.text or preview_msg.caption or ''
+    await preview_msg.delete()
+
+    # Сохраняем в базе с медиа и текстом
+    message_info = {"text": text, "media": media, "media_type": media_type}
+    await m.create_mail(date_mail, message_id, from_id, keyboard, message_text=message_info)
     
     if date_mail < dt.now():
-        await mailing(message_id, from_id, keyboard)
+        await mailing(message_id, from_id, keyboard, message_info=message_info)
         await message.answer('✅ Рассылка отправлена мгновенно', reply_markup=kb.markup_remove())
     else:
         await message.answer(f'✅ Рассылка будет запущена {date_mail_str}', reply_markup=kb.markup_remove())

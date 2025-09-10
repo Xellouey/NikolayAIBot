@@ -3,6 +3,7 @@ from aiogram.fsm.state import State, StatesGroup
 
 class FSMMail(StatesGroup):
     date_mail = State()
+    media = State()  # Новый этап для загрузки фото/видео
     message = State()
     keyboard = State()
     confirm = State()

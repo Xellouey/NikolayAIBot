@@ -1,14 +1,13 @@
 import asyncio
-import asyncio
-import utils
 import logging
 import keyboards as kb
 from aiogram import types, Router, F, Bot
 from database import user
 from aiogram.filters import CommandStart
 from aiogram.fsm.context import FSMContext
-from message_utils import send_msg, validate_file_id
 from database import user as user_module
+from localization import get_text  # New localization system
+
 u = user_module.User()
 
 # Import error handling systems
@@ -29,8 +28,8 @@ logging.basicConfig(
 
 
 
-async def send_lead_lesson(message: types.Message, bot: Bot):
-    """Send lead magnet lesson content"""
+async def send_lead_lesson(message: types.Message, bot: Bot, lang: str = 'ru'):
+    """Send lead magnet lesson content (fixed flow)"""
     try:
         lead_id = await l.ensure_lead_magnet()
         if not lead_id:
@@ -44,22 +43,18 @@ async def send_lead_lesson(message: types.Message, bot: Bot):
         
         user_id = message.from_user.id
         
-        # Check if user already has this lesson
-        if await p.check_user_has_lesson(user_id, lead_id):
-            print("✅ Пользователь уже имеет лид-урок")
-            return
+        # Create purchase for lead magnet if not exists
+        if not await p.check_user_has_lesson(user_id, lead_id):
+            await p.create_purchase(
+                user_id=user_id,
+                lesson_id=lead_id,
+                price_paid_usd=0,
+                price_paid_stars=0,
+                payment_id="lead_magnet"
+            )
+            print("✅ Создан purchase для лид-урока")
         
-        # Create purchase for lead magnet
-        await p.create_purchase(
-            user_id=user_id,
-            lesson_id=lead_id,
-            price_paid_usd=0,
-            price_paid_stars=0,
-            payment_id="lead_magnet"
-        )
-        print("✅ Создан purchase для лид-урока")
-        
-        # Send video with caption
+        # Send video with caption from lesson
         caption = f"📚 <b>{lesson_data.title}</b>\n\n{lesson_data.description}\n\n{lesson_data.text_content or ''}"
         if lesson_data.video_file_id:
             await bot.send_video(
@@ -71,7 +66,7 @@ async def send_lead_lesson(message: types.Message, bot: Bot):
         
         # Send document if exists
         if lesson_data.document_file_id:
-            doc_caption = lesson_data.text_content or "📝 Конспект урока"
+            doc_caption = lesson_data.text_content or get_text('after_video', lang)
             await bot.send_document(
                 chat_id=user_id,
                 document=lesson_data.document_file_id,
@@ -82,7 +77,7 @@ async def send_lead_lesson(message: types.Message, bot: Bot):
         # Send instruction message
         await bot.send_message(
             chat_id=user_id,
-            text="👆 Ваш лид-урок выше. Теперь вы можете перейти в каталог уроков!",
+            text=get_text('after_video', lang),
             reply_markup=kb.markup_main_menu()
         )
         
@@ -94,74 +89,48 @@ async def send_lead_lesson(message: types.Message, bot: Bot):
 
 
 async def join_request(message: types.ChatJoinRequest, state: FSMContext):
-    steps = utils.get_steps()
-    join = steps['join']
-    
-    await message.approve() 
+    # Fixed, simple join handling without steps
+    await message.approve()
     user_id = message.from_user.id if message.from_user else None
     if user_id:
-        await send_msg(join, user_id, kb.markup_phone())
-    
-    user_data = await u.get_user(user_id) if user_id else None
-    
-    if user_data == None and user_id:
-        await u.create_user(user_id, message.from_user.username if message.from_user else None, message.from_user.full_name if message.from_user else None)
+        user_data = await u.get_user(user_id)
+        if user_data is None:
+            await u.create_user(user_id, message.from_user.username if message.from_user else None, message.from_user.full_name if message.from_user else None)
+        # No automatic messaging on join in simplified flow
 
 
 router = Router()
 
 
 @router.message(CommandStart())
-async def start(message: types.Message, state: FSMContext, bot: Bot):    
+async def start(message: types.Message, state: FSMContext, bot: Bot):
+    # Fixed simple flow: /start -> welcome -> lead video -> main menu
     if message.from_user is None:
         print("❌ No from_user in start")
         return
-        
-    if await state.get_state() != None:
+
+    # Reset state if any
+    if await state.get_state() is not None:
         await state.clear()
 
     user_id = message.from_user.id
-    lang = message.from_user.language_code or 'ru'
+    lang = (message.from_user.language_code or 'ru')[:2]
     await u.update_user_lang(user_id, lang)
-    
-    # Create user if doesn't exist
+
+    # Ensure user exists
     user_data = await u.get_user(user_id)
-    if user_data == None:
+    if user_data is None:
         await u.create_user(user_id, message.from_user.username, message.from_user.full_name)
-        user_data = await u.get_user(user_id)  # Get fresh user data
-        
-    # Check if user has completed onboarding
-    onboarding_completed = await u.check_onboarding_status(user_id)
-    
-    welcome_text = await utils.get_text('messages.welcome', lang=lang)
-    
-    if onboarding_completed:
-        # User has completed onboarding - show main menu
-        await message.answer(
-            welcome_text,
-            reply_markup=kb.markup_main_menu()
-        )
-        return
-        
-    # Onboarding - send welcome
+
+    # Send welcome message
+    welcome_text = get_text('welcome', lang)
     await message.answer(
         welcome_text,
         reply_markup=kb.markup_remove()
     )
-    
-    # Send intro video (lead lesson)
-    await send_lead_lesson(message, bot)
-    
+
+    # Send intro video (lead lesson) - this will also show the main menu
+    await send_lead_lesson(message, bot, lang)
+
     # Mark onboarding as completed
     await u.mark_onboarding_complete(user_id)
-    
-    # Show catalog (import here to avoid circular import)
-    from .shop import show_catalog
-    await show_catalog(types.CallbackQuery.from_message(message, data='catalog'), state)  # Simulate callback for show_catalog
-    
-    # Send main menu after
-    await asyncio.sleep(2)
-    await message.answer(
-        welcome_text + "\n\nТеперь вы можете перейти в каталог уроков!",
-        reply_markup=kb.markup_main_menu()
-    )

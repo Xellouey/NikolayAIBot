@@ -7,7 +7,7 @@ from aiogram.fsm.storage.memory import MemoryStorage
 from aiogram.client.default import DefaultBotProperties
 from aiogram.enums import ParseMode
 
-from handlers import client, admin, mail, shop, payment, support
+from handlers import client, admin, mail, shop, payment, support, cancel_handler
 from database import sql
 from database.mail import Mail
 from mail import mailing
@@ -79,35 +79,62 @@ async def global_exception_handler(event):
 
 
 async def mail_scheduler():
-    """Периодическая проверка и отправка рассылок"""
+    """Периодическая проверка и отправка рассылок с атомарным захватом"""
     m = Mail()
+    check_counter = 0  # Счетчик для периодической проверки застрявших задач
+    
     while True:
         try:
+            # Каждые 30 итераций (примерно каждые 5 минут) проверяем застрявшие задачи
+            check_counter += 1
+            if check_counter >= 30:
+                check_counter = 0
+                # Восстанавливаем застрявшие задачи (в статусе 'run' более 30 минут)
+                stuck_count = await m.reset_stuck_mails(minutes=30)
+                if stuck_count > 0:
+                    logging.warning(f"🔄 Восстановлено {stuck_count} застрявших рассылок")
+            
+            # Сначала получаем список ожидающих рассылок
             wait_mails = await m.get_wait_mails()
+            
+            # Проверяем что wait_mails - это список
+            if not wait_mails:
+                wait_mails = []
+            
             for mail_data in wait_mails:
                 if not isinstance(mail_data, dict):
                     logging.warning(f"Skipping non-dict mail_data: {type(mail_data)}")
                     continue
+                
+                mail_id = mail_data['id']
+                
+                # ВАЖНО: Атомарно захватываем задачу, изменяя статус на 'run'
+                # Это предотвращает повторную обработку другим планировщиком
+                await m.update_mail(mail_id, 'status', 'run')
+                logging.info(f"🔒 Захвачена рассылка ID {mail_id}")
+                
                 try:
-                    mail_id = mail_data['id']
                     message_id = mail_data['message_id']
                     from_id = mail_data['from_id']
                     keyboard_str = mail_data.get('keyboard')
                     keyboard = json.loads(keyboard_str) if keyboard_str else None
+                    message_text = mail_data.get('message_text')
                     
                     logging.info(f"🚀 Запуск рассылки ID {mail_id}")
-                    await mailing(message_id, from_id, keyboard)
+                    await mailing(message_id, from_id, keyboard, message_info=message_text)
                     
                     # Обновляем статус на 'sent' только если mailing успешен
                     await m.update_mail(mail_id, 'status', 'sent')
                     logging.info(f"✅ Рассылка ID {mail_id} завершена")
+                    
                 except Exception as mail_error:
-                    logging.error(f"Ошибка обработки рассылки ID {mail_data.get('id', 'unknown')}: {mail_error}")
-                    # Опционально обновить status на 'error'
+                    logging.error(f"Ошибка обработки рассылки ID {mail_id}: {mail_error}")
+                    # При ошибке обновляем статус на 'error'
                     try:
-                        await m.update_mail(mail_data['id'], 'status', 'error')
-                    except:
-                        pass
+                        await m.update_mail(mail_id, 'status', 'error')
+                    except Exception as update_error:
+                        logging.error(f"Не удалось обновить статус ошибки для ID {mail_id}: {update_error}")
+                        
         except Exception as e:
             logging.error(f"Ошибка в scheduler рассылок: {e}")
         
@@ -150,11 +177,12 @@ async def main():
         
         print("📦 Загрузка обработчиков...")
         # Подключаем роутеры в порядке приоритета
-        dp.include_router(payment.payment_router)  # Обработчики платежей первыми
+        dp.include_router(cancel_handler.router)   # УНИВЕРСАЛЬНЫЙ ОБРАБОТЧИК ОТМЕНЫ ПЕРВЫМ!
+        dp.include_router(payment.payment_router)  # Обработчики платежей
         dp.include_router(support.router)          # Обработчики поддержки
-        dp.include_router(client.router)           # ✅ Обработчики клиента ПЕРВЫМИ - онбординг /start
+        dp.include_router(mail.router)             # Обработчики рассылки ПЕРЕД admin!
+        dp.include_router(client.router)           # ✅ Обработчики клиента - онбординг /start
         dp.include_router(admin.router)            # Обработчики админа
-        dp.include_router(mail.router)             # Обработчики рассылки
         dp.include_router(shop.shop_router)        # ✅ Обработчики магазина ПОСЛЕДНИМИ - только callback'и
         print("✅ Все обработчики загружены успешно")
         

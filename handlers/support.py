@@ -1,6 +1,7 @@
 import config
 import logging
 import utils
+from localization import get_text
 import keyboards as kb
 from datetime import datetime
 from aiogram import Bot, types, Router, F
@@ -51,7 +52,7 @@ async def cancel_support_inline(call: types.CallbackQuery, state: FSMContext):
         else:
             # Show support menu
             await call.message.edit_text(
-                utils.get_text('messages.support_welcome'),
+                get_text('messages.support_welcome'),
                 reply_markup=kb.markup_support_menu()
             )
     else:
@@ -65,7 +66,7 @@ async def support_menu(call: types.CallbackQuery, state: FSMContext):
     await call.answer()
     
     await call.message.edit_text(
-        utils.get_text('messages.support_welcome'),
+        get_text('messages.support_welcome'),
         reply_markup=kb.markup_support_menu()
     )
 
@@ -82,7 +83,7 @@ async def create_ticket_start(call: types.CallbackQuery, state: FSMContext):
     ])
     
     await call.message.edit_text(
-        utils.get_text('messages.ticket_subject_prompt'),
+        get_text('messages.ticket_subject_prompt'),
         reply_markup=cancel_keyboard
     )
 
@@ -102,7 +103,7 @@ async def process_ticket_subject(message: types.Message, state: FSMContext):
     await state.set_state(FSMSupport.waiting_description)
     
     await message.answer(
-        utils.get_text('messages.ticket_description_prompt'),
+        get_text('messages.ticket_description_prompt'),
         reply_markup=kb.markup_cancel()
     )
 
@@ -166,7 +167,7 @@ async def process_ticket_description(message: types.Message, state: FSMContext):
         
         # Send confirmation to user
         await message.answer(
-            utils.get_text('messages.ticket_created', 
+            get_text('messages.ticket_created', 
                           ticket_id=ticket.id, 
                           subject=subject),
             reply_markup=kb.markup_remove()
@@ -177,7 +178,7 @@ async def process_ticket_description(message: types.Message, state: FSMContext):
         
         # Show support menu
         await message.answer(
-            utils.get_text('messages.support_welcome'),
+            get_text('messages.support_welcome'),
             reply_markup=kb.markup_support_menu()
         )
         
@@ -185,7 +186,7 @@ async def process_ticket_description(message: types.Message, state: FSMContext):
         logging.error(f"Error creating ticket: {e}")
         await state.clear()
         await message.answer(
-            utils.get_text('messages.error_occurred'),
+            get_text('messages.error_occurred'),
             reply_markup=kb.markup_support_menu()
         )
 
@@ -200,7 +201,7 @@ async def show_user_tickets(call: types.CallbackQuery, state: FSMContext):
         
         if not tickets:
             await call.message.edit_text(
-                utils.get_text('messages.no_tickets'),
+                get_text('messages.no_tickets'),
                 reply_markup=kb.markup_support_menu()
             )
             return
@@ -213,7 +214,7 @@ async def show_user_tickets(call: types.CallbackQuery, state: FSMContext):
     except Exception as e:
         logging.error(f"Error in show_user_tickets: {e}")
         await call.message.edit_text(
-            utils.get_text('messages.error_occurred'),
+            get_text('messages.error_occurred'),
             reply_markup=kb.markup_support_menu()
         )
 
@@ -236,15 +237,15 @@ async def view_ticket_details(call: types.CallbackQuery, state: FSMContext):
         
         # Get status text
         status_text = {
-            'open': utils.get_text('messages.ticket_status_open'),
-            'in_progress': utils.get_text('messages.ticket_status_in_progress'),
-            'closed': utils.get_text('messages.ticket_status_closed')
+            'open': get_text('messages.ticket_status_open'),
+            'in_progress': get_text('messages.ticket_status_in_progress'),
+            'closed': get_text('messages.ticket_status_closed')
         }.get(ticket.status, ticket.status)
         
         # Format created_at
         created_at = ticket.created_at.strftime("%d.%m.%Y %H:%M")
         
-        text = utils.get_text('messages.ticket_details',
+        text = get_text('messages.ticket_details',
                              ticket_id=ticket.id,
                              subject=ticket.subject,
                              status=status_text,
@@ -259,7 +260,7 @@ async def view_ticket_details(call: types.CallbackQuery, state: FSMContext):
     except Exception as e:
         logging.error(f"Error in view_ticket_details: {e}")
         await call.message.edit_text(
-            utils.get_text('messages.error_occurred'),
+            get_text('messages.error_occurred'),
             reply_markup=kb.markup_support_menu()
         )
 
@@ -316,7 +317,7 @@ async def show_ticket_conversation(call: types.CallbackQuery, state: FSMContext)
             back_markup = kb.markup_admin_support_dashboard()
         
         await call.message.edit_text(
-            utils.get_text('messages.error_occurred'),
+            get_text('messages.error_occurred'),
             reply_markup=back_markup
         )
 
@@ -339,7 +340,7 @@ async def admin_support_dashboard(call: types.CallbackQuery, state: FSMContext):
         # Get ticket counts
         counts = await support_ticket.get_tickets_count_by_status()
         
-        text = utils.get_text('admin.messages.support_dashboard',
+        text = get_text('admin.messages.support_dashboard',
                              total=counts['total'],
                              open=counts['open'],
                              in_progress=counts['in_progress'],
@@ -361,7 +362,7 @@ async def admin_support_dashboard(call: types.CallbackQuery, state: FSMContext):
         logging.error(f"Error in admin_support_dashboard: {e}")
         try:
             await call.message.edit_text(
-                utils.get_text('messages.error_occurred'),
+                get_text('messages.error_occurred'),
                 reply_markup=kb.markup_admin_shop(call.from_user.id)
             )
         except:
@@ -426,7 +427,7 @@ async def show_tickets_by_status(call: types.CallbackQuery, state: FSMContext):
         logging.error(f"Error in show_tickets_by_status: {e}")
         try:
             await call.message.edit_text(
-                utils.get_text('messages.error_occurred'),
+                get_text('messages.error_occurred'),
                 reply_markup=kb.markup_admin_support_dashboard()
             )
         except:
@@ -471,7 +472,7 @@ async def admin_view_ticket(call: types.CallbackQuery, state: FSMContext):
             'closed': '🔴 Закрыт'
         }.get(ticket.status, ticket.status)
         
-        text = utils.get_text('admin.messages.ticket_details_admin',
+        text = get_text('admin.messages.ticket_details_admin',
                              ticket_id=ticket.id,
                              user_name=user_name,
                              user_id=ticket.user_id,
@@ -489,7 +490,7 @@ async def admin_view_ticket(call: types.CallbackQuery, state: FSMContext):
     except Exception as e:
         logging.error(f"Error in admin_view_ticket: {e}")
         await call.message.edit_text(
-            utils.get_text('messages.error_occurred'),
+            get_text('messages.error_occurred'),
             reply_markup=kb.markup_admin_support_dashboard()
         )
 
@@ -516,14 +517,14 @@ async def admin_respond_ticket(call: types.CallbackQuery, state: FSMContext):
         ])
         
         await call.message.edit_text(
-            utils.get_text('admin.messages.admin_response_prompt'),
+            get_text('admin.messages.admin_response_prompt'),
             reply_markup=cancel_keyboard
         )
         
     except Exception as e:
         logging.error(f"Error in admin_respond_ticket: {e}")
         await call.message.edit_text(
-            utils.get_text('messages.error_occurred'),
+            get_text('messages.error_occurred'),
             reply_markup=kb.markup_admin_support_dashboard()
         )
 
@@ -589,7 +590,7 @@ async def process_admin_response(message: types.Message, state: FSMContext):
         await notify_user_response(ticket, message.from_user)
         
         await message.answer(
-            utils.get_text('admin.messages.response_sent'),
+            get_text('admin.messages.response_sent'),
             reply_markup=kb.markup_remove()
         )
         
@@ -606,7 +607,7 @@ async def process_admin_response(message: types.Message, state: FSMContext):
         logging.error(f"Error in process_admin_response: {e}")
         await state.clear()
         await message.answer(
-            utils.get_text('messages.error_occurred'),
+            get_text('messages.error_occurred'),
             reply_markup=kb.markup_admin_support_dashboard()
         )
 
@@ -647,7 +648,7 @@ async def admin_close_ticket(call: types.CallbackQuery, state: FSMContext):
     except Exception as e:
         logging.error(f"Error in admin_close_ticket: {e}")
         await call.message.edit_text(
-            utils.get_text('messages.error_occurred'),
+            get_text('messages.error_occurred'),
             reply_markup=kb.markup_admin_support_dashboard()
         )
 
@@ -693,7 +694,7 @@ async def show_support_statistics(call: types.CallbackQuery, state: FSMContext):
     except Exception as e:
         logging.error(f"Error in show_support_statistics: {e}")
         await call.message.edit_text(
-            utils.get_text('messages.error_occurred'),
+            get_text('messages.error_occurred'),
             reply_markup=kb.markup_admin_support_dashboard()
         )
 
@@ -708,7 +709,7 @@ async def notify_admins_new_ticket(ticket, user):
         user_name = user.full_name or "Неизвестно"
         created_at = ticket.created_at.strftime("%d.%m.%Y %H:%M")
         
-        text = utils.get_text('admin.messages.new_ticket_notification',
+        text = get_text('admin.messages.new_ticket_notification',
                              subject=ticket.subject,
                              user_name=user_name,
                              user_id=ticket.user_id,
@@ -727,7 +728,7 @@ async def notify_admins_new_ticket(ticket, user):
 async def notify_user_response(ticket, admin_user):
     """Notify user about admin response"""
     try:
-        text = utils.get_text('messages.ticket_response_notification',
+        text = get_text('messages.ticket_response_notification',
                              ticket_id=ticket.id,
                              subject=ticket.subject)
         
@@ -740,7 +741,7 @@ async def notify_user_response(ticket, admin_user):
 async def notify_user_ticket_closed(ticket, admin_user):
     """Notify user about ticket closure"""
     try:
-        text = utils.get_text('messages.ticket_closed_notification',
+        text = get_text('messages.ticket_closed_notification',
                              ticket_id=ticket.id,
                              subject=ticket.subject)
         
@@ -779,6 +780,6 @@ async def cancel_support_operation(message: types.Message, state: FSMContext):
                 reply_markup=kb.markup_remove()
             )
             await message.answer(
-                utils.get_text('messages.support_welcome'),
+                get_text('messages.support_welcome'),
                 reply_markup=kb.markup_support_menu()
             )

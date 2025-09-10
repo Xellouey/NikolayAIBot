@@ -20,6 +20,7 @@ from database_resilience import resilient_db_operation
 
 # Добавляем импорт глобального bot из bot_instance
 from bot_instance import bot
+from localization import get_text
 
 
 logging.basicConfig(
@@ -53,10 +54,10 @@ async def show_catalog(call: types.CallbackQuery, state: FSMContext):
     if not lessons:
         await global_message_manager.edit_message_safe(
             call.message,
-            utils.get_text('admin.messages.no_lessons'),
+            get_text('admin.messages.no_lessons'),
             kb.markup_main_menu()          ) 
         return      
-    text = utils.get_text('messages.catalog_title')    
+    text = get_text('messages.catalog_title')    
     await global_message_manager.edit_message_safe(
         call.message,
         text,
@@ -80,7 +81,7 @@ async def show_my_lessons(call: types.CallbackQuery, state: FSMContext):
     
     if not purchases:
         await global_message_manager.edit_message_safe(call.message,
-            utils.get_text('messages.no_lessons'), 
+            get_text('messages.no_lessons'), 
             kb.markup_main_menu()
         ) 
         return
@@ -88,14 +89,20 @@ async def show_my_lessons(call: types.CallbackQuery, state: FSMContext):
     # Извлекаем информацию о уроках из покупок
     lessons = []
     for purchase in purchases:
-        lesson_data = await l.get_lesson(purchase['lesson_id'])
-        lesson_data = {
-            'id': purchase['lesson_id'],
-            'title': lesson_data['title'] if lesson_data else "Неизвестный урок"
-        }
-        lessons.append(lesson_data) 
+        lesson_obj = await l.get_lesson(purchase['lesson_id'])
+        if lesson_obj:
+            lesson_data = {
+                'id': purchase['lesson_id'],
+                'title': lesson_obj.title if hasattr(lesson_obj, 'title') else "Неизвестный урок"
+            }
+        else:
+            lesson_data = {
+                'id': purchase['lesson_id'],
+                'title': "Неизвестный урок"
+            }
+        lessons.append(lesson_data)
 
-    text = utils.get_text('messages.my_lessons_title')    
+    text = get_text('messages.my_lessons_title')    
     await global_message_manager.edit_message_safe(
         call.message,
         text,
@@ -118,7 +125,7 @@ async def show_profile(call: types.CallbackQuery, state: FSMContext):
     
     lessons_count = await get_purchases_count()
     
-    text = utils.get_text('messages.profile_info', full_name=call.from_user.full_name or "Не указано", lessons_count=lessons_count)
+    text = get_text('messages.profile_info', full_name=call.from_user.full_name or "Не указано", lessons_count=lessons_count)
     print(f"text = {type(text)}")
     print(f"text = {text}")    
     
@@ -142,7 +149,7 @@ async def show_lesson_details(call: types.CallbackQuery, state: FSMContext):
         print(f"❌ Неправильный формат callback_data: {call.data}")        
         await global_msg_manager.edit_message_safe(
             call.message,
-            utils.get_text('messages.error_occurred'), 
+            get_text('messages.error_occurred'), 
             kb.markup_main_menu()            
         )  
         return
@@ -156,7 +163,7 @@ async def show_lesson_details(call: types.CallbackQuery, state: FSMContext):
         print(f"❌ Неправильный ID урока: {lesson_id_str}")
         await global_message_manager.edit_message_safe(
             call.message,
-            utils.get_text('messages.error_occurred'), 
+            get_text('messages.error_occurred'), 
             kb.markup_main_menu()            
         )
         return
@@ -244,7 +251,7 @@ async def show_lesson_details(call: types.CallbackQuery, state: FSMContext):
     else:        
         # Пользователь не владеет уроком - показываем детали и возможность покупки
         print(f"📋 Пользователь не владеет уроком {lesson_id}") 
-        text = utils.get_text('messages.lesson_details',
+        text = get_text('messages.lesson_details',
                             title=lesson_data.title,
                             price_usd=f"{price_usd:.2f}",
                             price_stars=price_stars,
@@ -286,7 +293,7 @@ async def buy_lesson(call: types.CallbackQuery, state: FSMContext):
         if not lesson_data: 
             await global_message_manager.edit_message_safe(
                 call.message,
-                utils.get_text('messages.error_occurred'),
+                get_text('messages.error_occurred'),
                 kb.markup_main_menu()
             ) 
             return
@@ -297,7 +304,7 @@ async def buy_lesson(call: types.CallbackQuery, state: FSMContext):
         if user_has_lesson:
             await global_message_manager.edit_message_safe(
                 call.message,
-                utils.get_text('messages.lesson_already_owned'), 
+                get_text('messages.lesson_already_owned'), 
                 kb.markup_main_menu()
             )
             return
@@ -316,7 +323,7 @@ async def buy_lesson(call: types.CallbackQuery, state: FSMContext):
 
                 await global_message_manager.edit_message_safe(
                     call.message,
-                    utils.get_text('messages.lesson_purchased'), 
+                    get_text('messages.lesson_purchased'), 
                     kb.markup_main_menu()
                 )
 
@@ -324,7 +331,7 @@ async def buy_lesson(call: types.CallbackQuery, state: FSMContext):
                 logging.error(f"Error creating free purchase: {e}")                
                 await global_message_manager.edit_message_safe(
                     call.message,
-                    utils.get_text('messages.error_occurred'), 
+                    get_text('messages.error_occurred'), 
                     kb.markup_main_menu()
                 )
             return
@@ -356,7 +363,7 @@ async def buy_lesson(call: types.CallbackQuery, state: FSMContext):
         logging.error(f"Error in buy_lesson: {e}")        
         await global_message_manager.edit_message_safe(
             call.message,
-            utils.get_text('messages.error_occurred'), kb.markup_main_menu()
+            get_text('messages.error_occurred'), kb.markup_main_menu()
         )    
 
 
@@ -400,7 +407,7 @@ async def process_successful_payment(message: types.Message, state: FSMContext):
     except Exception as e:
         logging.error(f"Error in process_successful_payment: {e}")        
         await message.answer(
-                utils.get_text('messages.error_occurred'),
+                get_text('messages.error_occurred'),
                 reply_markup=kb.markup_main_menu()            )  
 
 
@@ -414,13 +421,13 @@ async def enter_promocode(call: types.CallbackQuery, state: FSMContext):
         await state.update_data(lesson_id=lesson_id)
         await state.set_state(FSMPurchase.promocode)        
         await call.message.edit_text(
-            utils.get_text('messages.enter_promocode'),
+            get_text('messages.enter_promocode'),
             reply_markup=kb.markup_cancel()
         )        
     except Exception as e: 
         logging.error(f"Error in enter_promocode: {e}")
         await call.message.edit_text(
-            utils.get_text('messages.error_occurred'), 
+            get_text('messages.error_occurred'), 
             reply_markup=kb.markup_main_menu()
         )                 
 
@@ -437,7 +444,7 @@ async def process_promocode(message: types.Message, state: FSMContext):
         if not lesson_id:  
             await state.clear()
             await message.answer(
-                utils.get_text('messages.error_occurred'),
+                get_text('messages.error_occurred'),
                 reply_markup=kb.markup_main_menu()
             )
             return
@@ -448,7 +455,7 @@ async def process_promocode(message: types.Message, state: FSMContext):
         
         if not promocode_data:
             await message.answer(
-                utils.get_text('messages.promocode_invalid'), 
+                get_text('messages.promocode_invalid'), 
                 reply_markup=kb.markup_cancel()            )
             return        
         
@@ -458,7 +465,7 @@ async def process_promocode(message: types.Message, state: FSMContext):
         if not lesson_data:
             await state.clear()
             await message.answer(
-                utils.get_text('messages.error_occurred'), 
+                get_text('messages.error_occurred'), 
                 reply_markup=kb.markup_main_menu()
             )
             return        
@@ -475,7 +482,7 @@ async def process_promocode(message: types.Message, state: FSMContext):
         final_stars = await utils.calculate_stars_price(final_price)        
         
         # Show applied promocode
-        text = utils.get_text('messages.promocode_applied',
+        text = get_text('messages.promocode_applied',
                              discount=f"{discount_amount:.2f}",
                              final_price=f"{final_price:.2f}",
                              final_stars=final_stars)
@@ -491,7 +498,7 @@ async def process_promocode(message: types.Message, state: FSMContext):
         logging.error(f"Error in process_promocode: {e}")
         await state.clear()
         await message.answer(
-            utils.get_text('messages.error_occurred'), 
+            get_text('messages.error_occurred'), 
             reply_markup=kb.markup_main_menu()
         )                
 
@@ -503,7 +510,7 @@ async def back_to_main(call: types.CallbackQuery, state: FSMContext):
     await state.clear()  # Clear any active states
     
     try:
-        text = utils.get_text('messages.welcome')
+        text = get_text('messages.welcome')
         await call.message.edit_text(
             text,
             reply_markup=kb.markup_main_menu()
@@ -511,6 +518,6 @@ async def back_to_main(call: types.CallbackQuery, state: FSMContext):
     except Exception as e:
         logging.error(f"Error in back_to_main: {e}")          
         await call.message.edit_text(
-            utils.get_text('messages.welcome'),
+            get_text('messages.welcome'),
             reply_markup=kb.markup_main_menu()
         )
