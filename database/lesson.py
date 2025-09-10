@@ -48,14 +48,50 @@ class Lesson(peewee.Model):
         try:
             # Синхронный запрос в async обертке
             lesson = Lesson.get(Lesson.id == lesson_id)
-
-
             return lesson
         except DoesNotExist:
             return None
         except Exception as e:
             print(f"❌ Ошибка получения урока {lesson_id}: {e}")
             return None
+    
+    async def ensure_lead_magnet(self):
+        """Ensure lead magnet lesson exists"""
+        try:
+            # Find or create free lesson
+            lead_lesson = Lesson.select().where(
+                (Lesson.is_free == True) & 
+                (Lesson.is_active == True)
+            ).first()
+            
+            if lead_lesson:
+                return lead_lesson.id
+            
+            # Create default lead lesson if not exists
+            lead_lesson = Lesson.create(
+                title="Бесплатный вводный урок",
+                description="Узнайте основы работы с нейросетями",
+                price_usd=0,
+                is_free=True,
+                is_active=True,
+                content_type='video'
+            )
+            return lead_lesson.id
+            
+        except Exception as e:
+            print(f"❌ Ошибка создания лид-магнита: {e}")
+            return None
+    
+    async def increment_views(self, lesson_id):
+        """Increment lesson views count"""
+        try:
+            Lesson.update(
+                views_count=Lesson.views_count + 1
+            ).where(Lesson.id == lesson_id).execute()
+            return True
+        except Exception as e:
+            print(f"❌ Ошибка увеличения просмотров: {e}")
+            return False
 
 
 class Purchase(peewee.Model):
@@ -212,6 +248,15 @@ class SystemSettings(peewee.Model):
                     raise
             else:
                 raise
+    
+    async def get_usd_to_stars_rate(self):
+        """Get USD to Stars exchange rate"""
+        rate = await self.get_setting('usd_to_stars_rate', '200')
+        return int(rate or 200)
+    
+    async def set_usd_to_stars_rate(self, rate):
+        """Set USD to Stars exchange rate"""
+        await self.set_setting('usd_to_stars_rate', str(rate))
 
 
 class Promocode(peewee.Model):
@@ -294,49 +339,18 @@ class Promocode(peewee.Model):
         return list(promocodes)
 
 class Translations(peewee.Model):
-    """Model for translations of steps"""
+    """Model for text translations (simplified)"""
 
-    step_id = peewee.CharField(max_length=50)  # e.g. 'welcome', 'video_caption', 'catalog_menu'
-    language = peewee.CharField(max_length=10)  # e.g. 'en', 'es', 'ru'
-    text_field = peewee.CharField(max_length=50)  # e.g. 'text', 'caption', 'button_label'
-    value = peewee.TextField()  # Translated text or caption
+    text_key = peewee.CharField(max_length=50)  # e.g. 'welcome', 'btn_catalog', 'lesson_price'
+    language = peewee.CharField(max_length=10)  # e.g. 'en', 'es', 'de'
+    value = peewee.TextField()  # Translated text
     created_at = peewee.DateTimeField(default=datetime.now())
     updated_at = peewee.DateTimeField(default=datetime.now())
 
     class Meta:
         database = con
         indexes = (
-            (('step_id', 'language', 'text_field'), True),  # Unique per step-lang-field
+            (('text_key', 'language'), True),  # Unique per key-lang
         )
 
-    async def create_translation(self, step_id, language, text_field, value) :
-        """Create translation"""
-
-        translation = await orm.create(Translations,
-                                     step_id=step_id,
-                                     language=language,
-                                     text_field=text_field,
-                                     value=value)
-        return translation
-
-    async def get_translation(self, step_id, language, text_field) :
-        """Get translation by step, lang, field"""        
-        try:
-            query = Translations.select().where(
-                (Translations.step_id == step_id) & 
-                (Translations.language == language) & 
-                (Translations.text_field == text_field)
-            )
-            translation = query.dicts().first()
-            return translation['value'] if translation else None
-        except Exception: 
-            return None
-
-    async def update_translation(self, step_id, language, text_field, value) :
-        """Update translation"""
-        await orm.execute(
-            Translations.update(value=value, updated_at=datetime.now()).where(
-                (Translations.step_id == step_id) &
-                (Translations.language == language) &
-                (Translations.text_field == text_field))
-        )
+    # Note: Methods removed - we use static access through localization.py instead

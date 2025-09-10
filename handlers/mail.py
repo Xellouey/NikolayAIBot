@@ -11,6 +11,7 @@ from aiogram.fsm.context import FSMContext
 from states import FSMMail
 from database import mail
 from mail import mailing
+from localization import get_text
 
 
 logging.basicConfig(
@@ -61,13 +62,13 @@ async def takeMailMessage(message: types.Message, state: FSMMail):
     await state.set_state(FSMMail.keyboard)
     
     # Send help message with JSON example and copy button
-    help_text = utils.get_text('mail.messages.mail_help')
+    help_text = get_text('mail.messages.mail_help')
     keyboard_items = [
-        [types.InlineKeyboardButton(text=utils.get_text('mail.buttons.copy_json'), callback_data='copy_json_example')],
+        [types.InlineKeyboardButton(text=get_text('mail.buttons.copy_json'), callback_data='copy_json_example')],
         [types.KeyboardButton(text='➡️ Пропустить'), types.KeyboardButton(text='❌ Отмена')]
     ]
     
-    inline_kb = types.InlineKeyboardMarkup(inline_keyboard=[[types.InlineKeyboardButton(text=utils.get_text('mail.buttons.copy_json'), callback_data='copy_json_example')]])
+    inline_kb = types.InlineKeyboardMarkup(inline_keyboard=[[types.InlineKeyboardButton(text=get_text('mail.buttons.copy_json'), callback_data='copy_json_example')]])
     reply_kb = types.ReplyKeyboardMarkup(keyboard=[[types.KeyboardButton(text='➡️ Пропустить'), types.KeyboardButton(text='❌ Отмена')]], resize_keyboard=True)
     
     await message.answer(help_text, reply_markup=inline_kb)
@@ -79,7 +80,7 @@ async def copy_json_example(call: types.CallbackQuery):
     """Send JSON example for easy copying"""
     await call.answer()
     
-    example_json = utils.get_text('mail.messages.json_example')
+    example_json = get_text('mail.messages.json_example')
     await call.message.answer(
         f'📋 <b>Пример JSON для копирования:</b>\n\n<code>{example_json}</code>\n\nНажмите на текст выше чтобы скопировать'
     )
@@ -96,7 +97,7 @@ async def takeMailkeyboard(message: types.Message, state: FSMMail):
             keyboard = json.loads(keyboard)
         except:
             # Show error with copy button again
-            inline_kb = types.InlineKeyboardMarkup(inline_keyboard=[[types.InlineKeyboardButton(text=utils.get_text('mail.buttons.copy_json'), callback_data='copy_json_example')]])
+            inline_kb = types.InlineKeyboardMarkup(inline_keyboard=[[types.InlineKeyboardButton(text=get_text('mail.buttons.copy_json'), callback_data='copy_json_example')]])
             await message.answer(
                 '❌ Неверный формат JSON. Попробуйте ещё раз:',
                 reply_markup=inline_kb

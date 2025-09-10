@@ -1,6 +1,7 @@
 import config
 import logging
 import utils
+from localization import get_text
 from aiogram.types import ReplyKeyboardRemove, ReplyKeyboardMarkup, KeyboardButton, InlineKeyboardMarkup, InlineKeyboardButton
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 
@@ -68,80 +69,19 @@ def markup_custom(keyboard):
     return markup_custom
 
 
-def markup_editor():
-    items = [
-        [
-            InlineKeyboardButton(text='➕ Создать шаг', callback_data='createStep')
-        ],
-        [
-            InlineKeyboardButton(text='🤝 Вступление', callback_data='edit:join'),
-            InlineKeyboardButton(text='👋 Старт', callback_data='edit:start')
-        ]
-    ]
-    
-    steps = utils.get_steps()
-    s_list = list(steps.keys())
-    
-    try:
-        step_bot = s_list[2:]
-    except:
-        step_bot = []
-        
-    row = []
-    
-    i = 1
-    for step in step_bot:
-        row.append(InlineKeyboardButton(text=f"👟 Шаг{i}", callback_data=f"edit:{step}"))
-        
-        if len(row) == 2:
-            items.append(row)
-            row = []
-            
-        i += 1
-        
-    if row != []:
-        items.append(row)
-        
-    items.append([InlineKeyboardButton(text='↪️ Назад', callback_data='backAdmin')])
-    
-    markup_editor = InlineKeyboardMarkup(inline_keyboard=items)
-    return markup_editor
-
-
-def markup_edit(disable_default=False):
-    items = [
-        [KeyboardButton(text='👟 Шаг')]
-    ]
-    
-    if disable_default == False:
-        items.extend((
-            [
-                KeyboardButton(text='🖌 Позицию'),
-                KeyboardButton(text='⏳ Задержку')
-            ],
-            [
-                KeyboardButton(text='🔗 Кнопки'),
-                KeyboardButton(text='⛔️ Удалить')
-            ]
-        ))
-        
-    items.append([KeyboardButton(text='❌ Отмена')])
-    
-    markup_edit = ReplyKeyboardMarkup(keyboard=items, resize_keyboard=True)
-    return markup_edit
+# Functions markup_editor and markup_edit removed - no longer needed
+# Bot uses fixed linear navigation without dynamic step editing
 
 
 # ===== NEW SHOP KEYBOARDS =====
 
-def markup_main_menu():
+def markup_main_menu(lang='ru'):
     """Main menu keyboard for shop"""
+    from localization import get_text
     items = [
-        [InlineKeyboardButton(text=utils.get_text('buttons.catalog'), callback_data='catalog')],
-        [InlineKeyboardButton(text=utils.get_text('buttons.my_lessons'), callback_data='my_lessons')],
-        [
-            InlineKeyboardButton(text=utils.get_text('buttons.profile'), callback_data='profile'),
-            InlineKeyboardButton(text=utils.get_text('buttons.support'), callback_data='support')
-        ]
+        [InlineKeyboardButton(text=get_text('btn_catalog', lang), callback_data='catalog')],
+        [InlineKeyboardButton(text=get_text('btn_my_lessons', lang), callback_data='my_lessons')],
+        [InlineKeyboardButton(text=get_text('btn_support', lang), callback_data='support')]
     ]
     
     return InlineKeyboardMarkup(inline_keyboard=items)
@@ -167,29 +107,31 @@ async def markup_catalog(lessons):
         )])
     
     # Back button
+    from localization import get_text
     items.append([InlineKeyboardButton(
-        text=utils.get_text('buttons.back'), 
+        text=get_text('btn_back', 'ru'), 
         callback_data='back_main'
     )])
     
     return InlineKeyboardMarkup(inline_keyboard=items)
 
 
-def markup_lesson_details(lesson_id, user_has_lesson=False, show_promocode=True):
+def markup_lesson_details(lesson_id, user_has_lesson=False, show_promocode=True, lang='ru'):
     """Lesson details keyboard"""
+    from localization import get_text
     items = []
     if not user_has_lesson:
         items.append([InlineKeyboardButton(
-            text=utils.get_text('buttons.buy'), 
+            text=get_text('btn_buy', lang), 
             callback_data=f"buy:{lesson_id}"
         )])
         if show_promocode:
             items.append([InlineKeyboardButton(
-                text=utils.get_text('buttons.enter_promocode'), 
+                text='🎟️ Промокод', 
                 callback_data=f"promocode:{lesson_id}"
             )])
     items.append([InlineKeyboardButton(
-        text=utils.get_text('buttons.back'), 
+        text=get_text('btn_back', lang), 
         callback_data='catalog'
     )])
     return InlineKeyboardMarkup(inline_keyboard=items)
@@ -203,8 +145,9 @@ def markup_my_lessons(lessons):
             text=f"📚 {lesson['title']}", 
             callback_data=f"view_lesson:{lesson['id']}"
         )])
+    from localization import get_text
     items.append([InlineKeyboardButton(
-        text=utils.get_text('buttons.back'), 
+        text=get_text('btn_back', 'ru'), 
         callback_data='back_main'
     )])
     return InlineKeyboardMarkup(inline_keyboard=items)
@@ -212,13 +155,14 @@ def markup_my_lessons(lessons):
 
 def markup_payment_confirm(lesson_id, price_usd, price_stars, promocode=None):
     """Payment confirmation keyboard"""
+    from localization import BACK_ICON
     items = [
         [InlineKeyboardButton(
             text=f"💳 Оплатить {price_stars} ⭐", 
             callback_data=f"pay:{lesson_id}:{promocode or 'none'}"
         )],
         [InlineKeyboardButton(
-            text=str(utils.get_text('buttons.back')), 
+            text=f'{BACK_ICON} Назад', 
             callback_data=f"lesson:{lesson_id}"
         )]
     ]
@@ -227,9 +171,10 @@ def markup_payment_confirm(lesson_id, price_usd, price_stars, promocode=None):
 
 def markup_back_to_lesson(lesson_id):
     """Simple back to lesson keyboard"""
+    from localization import BACK_ICON
     items = [
         [InlineKeyboardButton(
-            text=str(utils.get_text('buttons.back')), 
+            text=f'{BACK_ICON} Назад', 
             callback_data=f"lesson:{lesson_id}"
         )]
     ]
@@ -239,16 +184,15 @@ def markup_back_to_lesson(lesson_id):
 # ===== ADMIN SHOP KEYBOARDS =====
 
 def markup_admin_shop(user_id):
-    """Admin panel keyboard for shop"""
+    """Admin panel keyboard for shop - ALWAYS IN RUSSIAN"""
     items = [
         [InlineKeyboardButton(text='📤 Рассылка', callback_data='mail')], 
-        [InlineKeyboardButton(text='✏️ Редактор шагов', callback_data='editor')],
-        [InlineKeyboardButton(text=str(utils.get_text('admin.buttons.lessons_management')), callback_data='lessons_mgmt')],
+        [InlineKeyboardButton(text='📚 Управление уроками', callback_data='lessons_mgmt')],
         [InlineKeyboardButton(text='🎫 Поддержка', callback_data='admin_support')],
-        [InlineKeyboardButton(text=str(utils.get_text('admin.buttons.statistics')), callback_data='statistics')],
+        [InlineKeyboardButton(text='📊 Статистика', callback_data='statistics')],
         [
-            InlineKeyboardButton(text=str(utils.get_text('admin.buttons.settings')), callback_data='settings'),
-            InlineKeyboardButton(text=str(utils.get_text('admin.buttons.promocodes')), callback_data='promocodes')
+            InlineKeyboardButton(text='⛙️ Настройки', callback_data='settings'),
+            InlineKeyboardButton(text='🎫 Промокоды', callback_data='promocodes')
         ]
     ]
     
@@ -259,22 +203,23 @@ def markup_admin_shop(user_id):
 
 
 def markup_lessons_management():
-    """Lessons management keyboard"""
+    """Lessons management keyboard - ALWAYS IN RUSSIAN"""
     items = [
-        [InlineKeyboardButton(text=str(utils.get_text('admin.buttons.add_lesson')), callback_data='add_lesson')],
-        [InlineKeyboardButton(text=str(utils.get_text('admin.buttons.edit_lesson')), callback_data='edit_lesson')],
-        [InlineKeyboardButton(text=str(utils.get_text('admin.buttons.delete_lesson')), callback_data='delete_lesson')],
-        [InlineKeyboardButton(text=str(utils.get_text('admin.buttons.back_admin')), callback_data='backAdmin')]
+        [InlineKeyboardButton(text='➕ Добавить урок', callback_data='add_lesson')],
+        [InlineKeyboardButton(text='✏️ Редактировать урок', callback_data='edit_lesson')],
+        [InlineKeyboardButton(text='🗑️ Удалить урок', callback_data='delete_lesson')],
+        [InlineKeyboardButton(text='↪️ Назад', callback_data='backAdmin')]
     ]
     return InlineKeyboardMarkup(inline_keyboard=items)
 
 
 def markup_admin_settings():
-    """Admin settings keyboard"""
+    """Admin settings keyboard - ALWAYS IN RUSSIAN"""
     items = [
-        [InlineKeyboardButton(text=str(utils.get_text('admin.buttons.currency_settings')), callback_data='currency_rate')],
-        [InlineKeyboardButton(text=str(utils.get_text('admin.buttons.text_settings')), callback_data='text_settings')],
-        [InlineKeyboardButton(text=str(utils.get_text('admin.buttons.back_admin')), callback_data='backAdmin')]
+        [InlineKeyboardButton(text='💱 Курс валют', callback_data='currency_rate')],
+        [InlineKeyboardButton(text='📝 Настройки текстов', callback_data='text_settings')],
+        [InlineKeyboardButton(text='🌍 Переводы', callback_data='translations')],
+        [InlineKeyboardButton(text='↪️ Назад', callback_data='backAdmin')]
     ]
     return InlineKeyboardMarkup(inline_keyboard=items)
 
@@ -290,7 +235,7 @@ def markup_lesson_edit_list(lessons):
             callback_data=f"edit_lesson_id:{lesson['id']}"
         )])
     items.append([InlineKeyboardButton(
-        text=str(utils.get_text('admin.buttons.back_admin')), 
+        text='↪️ Назад', 
         callback_data='edit_lesson'
     )])
     return InlineKeyboardMarkup(inline_keyboard=items)
@@ -309,7 +254,7 @@ def markup_lesson_edit_fields(lesson_id):
             InlineKeyboardButton(text="🎁 Бесплатный", callback_data=f"toggle_free:{lesson_id}")
         ],
         [InlineKeyboardButton(
-            text=str(utils.get_text('admin.buttons.back_admin')), 
+            text='↪️ Назад', 
             callback_data='edit_lesson'
         )]
     ]
@@ -317,11 +262,11 @@ def markup_lesson_edit_fields(lesson_id):
 
 
 def markup_promocodes_management():
-    """Promocodes management keyboard"""
+    """Promocodes management keyboard - ALWAYS IN RUSSIAN"""
     items = [
-        [InlineKeyboardButton(text=str(utils.get_text('admin.buttons.add_promocode')), callback_data='add_promocode')],
-        [InlineKeyboardButton(text="📋 Список промокодов", callback_data='list_promocodes')],
-        [InlineKeyboardButton(text=str(utils.get_text('admin.buttons.back_admin')), callback_data='backAdmin')]
+        [InlineKeyboardButton(text='➕ Добавить промокод', callback_data='add_promocode')],
+        [InlineKeyboardButton(text='📋 Список промокодов', callback_data='list_promocodes')],
+        [InlineKeyboardButton(text='↪️ Назад', callback_data='backAdmin')]
     ]
     return InlineKeyboardMarkup(inline_keyboard=items)
 
@@ -331,9 +276,9 @@ def markup_promocodes_management():
 def markup_support_menu():
     """Support menu for users"""
     items = [
-        [InlineKeyboardButton(text=str(utils.get_text('buttons.create_ticket')), callback_data='create_ticket')],
-        [InlineKeyboardButton(text=str(utils.get_text('buttons.my_tickets')), callback_data='my_tickets')],
-        [InlineKeyboardButton(text=str(utils.get_text('buttons.back')), callback_data='back_main')]
+        [InlineKeyboardButton(text='🎫 Создать тикет', callback_data='create_ticket')],
+        [InlineKeyboardButton(text='📋 Мои тикеты', callback_data='my_tickets')],
+        [InlineKeyboardButton(text='⬅️ Назад', callback_data='back_main')]
     ]
     return InlineKeyboardMarkup(inline_keyboard=items)
 
@@ -353,7 +298,7 @@ def markup_user_tickets(tickets):
             callback_data=f"view_ticket:{ticket['id']}"
         )])
     items.append([InlineKeyboardButton(
-        text=str(utils.get_text('buttons.back')),
+        text='⬅️ Назад',
         callback_data='support'
     )])
     return InlineKeyboardMarkup(inline_keyboard=items)
@@ -368,7 +313,7 @@ def markup_ticket_details(ticket_id, is_closed=False):
             callback_data=f"ticket_conversation:{ticket_id}"
         )])
     items.append([InlineKeyboardButton(
-        text=str(utils.get_text('buttons.back')),
+        text='⬅️ Назад',
         callback_data='my_tickets'
     )])
     return InlineKeyboardMarkup(inline_keyboard=items)
@@ -377,13 +322,13 @@ def markup_ticket_details(ticket_id, is_closed=False):
 # ===== ADMIN SUPPORT KEYBOARDS =====
 
 def markup_admin_support_dashboard():
-    """Admin support dashboard keyboard"""
+    """Admin support dashboard keyboard - ALWAYS IN RUSSIAN"""
     items = [
-        [InlineKeyboardButton(text=str(utils.get_text('buttons.open_tickets')), callback_data='tickets_open')],
-        [InlineKeyboardButton(text=str(utils.get_text('buttons.in_progress_tickets')), callback_data='tickets_in_progress')],
-        [InlineKeyboardButton(text=str(utils.get_text('buttons.closed_tickets')), callback_data='tickets_closed')],
-        [InlineKeyboardButton(text=str(utils.get_text('buttons.support_stats')), callback_data='support_stats')],
-        [InlineKeyboardButton(text=str(utils.get_text('admin.buttons.back_admin')), callback_data='backAdmin')]
+        [InlineKeyboardButton(text='🟢 Открытые тикеты', callback_data='tickets_open')],
+        [InlineKeyboardButton(text='🟡 В работе', callback_data='tickets_in_progress')],
+        [InlineKeyboardButton(text='🔴 Закрытые тикеты', callback_data='tickets_closed')],
+        [InlineKeyboardButton(text='📊 Статистика поддержки', callback_data='support_stats')],
+        [InlineKeyboardButton(text='↪️ Назад', callback_data='backAdmin')]
     ]
     return InlineKeyboardMarkup(inline_keyboard=items)
 
@@ -409,7 +354,7 @@ def markup_admin_tickets_list(tickets):
             callback_data=f"admin_ticket:{ticket['id']}"
         )])
     items.append([InlineKeyboardButton(
-        text=str(utils.get_text('admin.buttons.back_admin')),
+        text='↪️ Назад',
         callback_data='admin_support'
     )])
     return InlineKeyboardMarkup(inline_keyboard=items)
@@ -420,13 +365,13 @@ def markup_admin_ticket_actions(ticket_id, is_closed=False):
     items = []
     if not is_closed:
         items.extend([
-            [InlineKeyboardButton(text=str(utils.get_text('buttons.respond_ticket')), callback_data=f'respond_ticket:{ticket_id}')],
-            [InlineKeyboardButton(text=str(utils.get_text('buttons.close_ticket')), callback_data=f'close_ticket:{ticket_id}')],
+            [InlineKeyboardButton(text='💬 Ответить', callback_data=f'respond_ticket:{ticket_id}')],
+            [InlineKeyboardButton(text='✅ Закрыть тикет', callback_data=f'close_ticket:{ticket_id}')],
             [InlineKeyboardButton(text="🔄 Изменить статус", callback_data=f'change_status:{ticket_id}')]
         ])
     items.extend([
         [InlineKeyboardButton(text="💬 Показать переписку", callback_data=f'ticket_conversation:{ticket_id}')],
-        [InlineKeyboardButton(text=str(utils.get_text('admin.buttons.back_admin')), callback_data='admin_support')]
+        [InlineKeyboardButton(text='↪️ Назад', callback_data='admin_support')]
     ])
     return InlineKeyboardMarkup(inline_keyboard=items)
 

@@ -1,8 +1,13 @@
 import asyncio
 import logging
 import time
+import os
 import aioschedule as schedule
 from database import mail
+
+# Disable this scheduler by default - use nikolayai.py scheduler instead
+if os.getenv("ENABLE_CHECK_SCHEDULER", "0") != "1":
+    raise SystemExit("check.py disabled: scheduler runs in nikolayai.py")
 
 
 logging.basicConfig(

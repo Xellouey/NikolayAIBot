@@ -79,17 +79,26 @@ async def global_exception_handler(event):
 
 
 async def mail_scheduler():
-    """Периодическая проверка и отправка рассылок"""
+    """Периодическая проверка и отправка рассылок с атомарным захватом"""
     m = Mail()
     while True:
         try:
+            # Сначала получаем список ожидающих рассылок
             wait_mails = await m.get_wait_mails()
+            
             for mail_data in wait_mails:
                 if not isinstance(mail_data, dict):
                     logging.warning(f"Skipping non-dict mail_data: {type(mail_data)}")
                     continue
+                
+                mail_id = mail_data['id']
+                
+                # ВАЖНО: Атомарно захватываем задачу, изменяя статус на 'run'
+                # Это предотвращает повторную обработку другим планировщиком
+                await m.update_mail(mail_id, 'status', 'run')
+                logging.info(f"🔒 Захвачена рассылка ID {mail_id}")
+                
                 try:
-                    mail_id = mail_data['id']
                     message_id = mail_data['message_id']
                     from_id = mail_data['from_id']
                     keyboard_str = mail_data.get('keyboard')
@@ -101,13 +110,15 @@ async def mail_scheduler():
                     # Обновляем статус на 'sent' только если mailing успешен
                     await m.update_mail(mail_id, 'status', 'sent')
                     logging.info(f"✅ Рассылка ID {mail_id} завершена")
+                    
                 except Exception as mail_error:
-                    logging.error(f"Ошибка обработки рассылки ID {mail_data.get('id', 'unknown')}: {mail_error}")
-                    # Опционально обновить status на 'error'
+                    logging.error(f"Ошибка обработки рассылки ID {mail_id}: {mail_error}")
+                    # При ошибке обновляем статус на 'error'
                     try:
-                        await m.update_mail(mail_data['id'], 'status', 'error')
-                    except:
-                        pass
+                        await m.update_mail(mail_id, 'status', 'error')
+                    except Exception as update_error:
+                        logging.error(f"Не удалось обновить статус ошибки для ID {mail_id}: {update_error}")
+                        
         except Exception as e:
             logging.error(f"Ошибка в scheduler рассылок: {e}")
         
