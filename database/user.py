@@ -13,6 +13,7 @@ class User(peewee.Model):
     username = peewee.TextField(null=True)
     full_name = peewee.TextField()
     phone = peewee.TextField(null=True)
+    lang = peewee.CharField(default='ru')  # Language code
     # Onboarding tracking fields
     onboarding_completed = peewee.BooleanField(default=False)
     last_onboarding_step = peewee.TextField(null=True)
@@ -106,3 +107,12 @@ class User(peewee.Model):
         except Exception as e:
             print(f"❌ Ошибка проверки onboarding статуса: {e}")
             return False
+
+
+    async def update_user_lang(self, user_id, lang):
+        """Update user language"""
+        try:
+            User.update({'lang': lang}).where(User.user_id == user_id).execute()
+            print(f"✅ Language updated for user {user_id} to {lang}")
+        except Exception as e:
+            print(f"❌ Error updating language for user {user_id}: {e}")

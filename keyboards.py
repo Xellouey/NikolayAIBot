@@ -98,7 +98,7 @@ def markup_editor():
             row = []
             
         i += 1
-            
+        
     if row != []:
         items.append(row)
         
@@ -136,25 +136,25 @@ def markup_edit(disable_default=False):
 def markup_main_menu():
     """Main menu keyboard for shop"""
     items = [
-        [InlineKeyboardButton(text=str(utils.get_text('buttons.catalog')), callback_data='catalog')],
-        [InlineKeyboardButton(text=str(utils.get_text('buttons.my_lessons')), callback_data='my_lessons')],
+        [InlineKeyboardButton(text=utils.get_text('buttons.catalog'), callback_data='catalog')],
+        [InlineKeyboardButton(text=utils.get_text('buttons.my_lessons'), callback_data='my_lessons')],
         [
-            InlineKeyboardButton(text=str(utils.get_text('buttons.profile')), callback_data='profile'),
-            InlineKeyboardButton(text=str(utils.get_text('buttons.support')), callback_data='support')
+            InlineKeyboardButton(text=utils.get_text('buttons.profile'), callback_data='profile'),
+            InlineKeyboardButton(text=utils.get_text('buttons.support'), callback_data='support')
         ]
     ]
     
     return InlineKeyboardMarkup(inline_keyboard=items)
 
 
-def markup_catalog(lessons):
+async def markup_catalog(lessons):
     """Catalog keyboard with lessons"""
     items = []
     
     for lesson in lessons:
         # Show price in USD and Stars
         price_usd = float(lesson['price_usd'])
-        price_stars = utils.calculate_stars_price(price_usd)
+        price_stars = await utils.calculate_stars_price(price_usd)
         
         if lesson['is_free']:
             button_text = f"🎁 {lesson['title']} (FREE)"
@@ -168,7 +168,7 @@ def markup_catalog(lessons):
     
     # Back button
     items.append([InlineKeyboardButton(
-        text=str(utils.get_text('buttons.back')), 
+        text=utils.get_text('buttons.back'), 
         callback_data='back_main'
     )])
     
@@ -180,16 +180,16 @@ def markup_lesson_details(lesson_id, user_has_lesson=False, show_promocode=True)
     items = []
     if not user_has_lesson:
         items.append([InlineKeyboardButton(
-            text=str(utils.get_text('buttons.buy')), 
+            text=utils.get_text('buttons.buy'), 
             callback_data=f"buy:{lesson_id}"
         )])
         if show_promocode:
             items.append([InlineKeyboardButton(
-                text=str(utils.get_text('buttons.enter_promocode')), 
+                text=utils.get_text('buttons.enter_promocode'), 
                 callback_data=f"promocode:{lesson_id}"
             )])
     items.append([InlineKeyboardButton(
-        text=str(utils.get_text('buttons.back')), 
+        text=utils.get_text('buttons.back'), 
         callback_data='catalog'
     )])
     return InlineKeyboardMarkup(inline_keyboard=items)
@@ -204,7 +204,7 @@ def markup_my_lessons(lessons):
             callback_data=f"view_lesson:{lesson['id']}"
         )])
     items.append([InlineKeyboardButton(
-        text=str(utils.get_text('buttons.back')), 
+        text=utils.get_text('buttons.back'), 
         callback_data='back_main'
     )])
     return InlineKeyboardMarkup(inline_keyboard=items)
@@ -291,7 +291,7 @@ def markup_lesson_edit_list(lessons):
         )])
     items.append([InlineKeyboardButton(
         text=str(utils.get_text('admin.buttons.back_admin')), 
-        callback_data='lessons_mgmt'
+        callback_data='edit_lesson'
     )])
     return InlineKeyboardMarkup(inline_keyboard=items)
 
@@ -430,17 +430,19 @@ def markup_admin_ticket_actions(ticket_id, is_closed=False):
     ])
     return InlineKeyboardMarkup(inline_keyboard=items)
 
+
 def markup_text_categories():
     """Markup for text categories selection"""
     # не отображать без прямого указания, это тестовый функционал не для продакшена
     items = [
         [InlineKeyboardButton(text="🔘 Кнопки", callback_data='text_category:buttons')],
         [InlineKeyboardButton(text="💬 Сообщения", callback_data='text_category:messages')],
-        # [InlineKeyboardButton(text="👨‍💼 Админ", callback_data='text_category:admin')],
-        # [InlineKeyboardButton(text="📧 Почта", callback_data='text_category:mail')],
+        [InlineKeyboardButton(text="👨‍💼 Админ", callback_data='text_category:admin')],
+        [InlineKeyboardButton(text="📧 Почта", callback_data='text_category:mail')],
         [InlineKeyboardButton(text="↩️ Назад к настройкам", callback_data='settings')]
     ]
     return InlineKeyboardMarkup(inline_keyboard=items)
+
 
 def markup_text_keys(category):
     """Markup for text keys in selected category"""
@@ -463,6 +465,7 @@ def markup_text_keys(category):
     
     items.append([InlineKeyboardButton(text="↩️ Назад к категориям", callback_data='text_settings')])
     return InlineKeyboardMarkup(inline_keyboard=items)
+
 
 def markup_text_edit(key, category):
     """Markup for editing specific text key"""

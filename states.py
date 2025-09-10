@@ -65,5 +65,14 @@ class FSMSupport(StatesGroup):
     waiting_response = State()
     admin_responding = State()
 
+
+class FSMTranslations(StatesGroup):
+    """States for translations management"""
+    language = State()
+    step = State()
+    field = State()
+    value = State()
+
+
 # class FSMSuperPower(StatesGroup):
     # birthdate = State()

@@ -121,7 +121,7 @@ class ErrorRecoverySystem:
         Returns:
             True if message sent successfully
         """
-        from handlers.client import send_msg
+        from message_utils import send_msg
         
         try:
             # Try with original formatting

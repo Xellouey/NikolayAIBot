@@ -1,7 +1,8 @@
 import json
 from decimal import Decimal
 from datetime import datetime, timedelta
-from database.lesson import SystemSettings
+from database.lesson import SystemSettings, Translations
+from peewee import DoesNotExist
 import re
 import logging
 
@@ -90,6 +91,59 @@ def get_new_key():
     return key
 
 
+def get_text(path, lang='ru', **kwargs):
+    """Get text by path with formatting and language support
+    
+    Args:
+        path: dot-separated path like 'messages.welcome' or 'buttons.back'
+        lang: Language code (default 'ru')
+        **kwargs: format arguments for text
+    
+    Returns:
+        Formatted text or path if not found
+    """
+    # First, try to get translation from DB if lang != 'ru'
+    if lang != 'ru':
+        try:
+            translation = Translations.select().where(
+                (Translations.step_id == path) &
+                (Translations.language == lang) &
+                (Translations.text_field == 'text')
+            ).first()
+            if translation:
+                current = translation.value
+            else:
+                # Fallback to JSON
+                current = _get_json_text(path)
+        except Exception as e:
+            logging.error(f"Error getting translation for {path}, {lang}: {e}")
+            current = _get_json_text(path)
+    else:
+        current = _get_json_text(path)
+    
+    # Format text if it's a string and has format args
+    if isinstance(current, str) and kwargs:
+        try:
+            return current.format(**kwargs)
+        except (KeyError, ValueError):
+            return current
+    
+    return current
+
+def _get_json_text(path):
+    """Helper to get text from JSON (original logic)"""
+    texts = get_interface_texts()
+    
+    # Navigate through nested dict using path
+    current = texts
+    for key in path.split('.'):
+        if isinstance(current, dict) and key in current:
+            current = current[key]
+        else:
+            return path  # Return path if not found
+    
+    return current
+
 def get_interface_texts(filename="json/interface_texts.json"):
     """Get interface texts from JSON file"""
     try:
@@ -141,36 +195,6 @@ def update_interface_texts(new_texts, filename="json/interface_texts.json"):
     """Update interface texts JSON file"""
     with open(filename, 'w', encoding='utf-8') as f:
         json.dump(new_texts, f, indent=4, ensure_ascii=False)
-
-
-def get_text(path, **kwargs):
-    """Get text by path with formatting
-    
-    Args:
-        path: dot-separated path like 'messages.welcome' or 'buttons.back'
-        **kwargs: format arguments for text
-    
-    Returns:
-        Formatted text or path if not found
-    """
-    texts = get_interface_texts()
-    
-    # Navigate through nested dict using path
-    current = texts
-    for key in path.split('.'):
-        if isinstance(current, dict) and key in current:
-            current = current[key]
-        else:
-            return path  # Return path if not found
-    
-    # Format text if it's a string and has format args
-    if isinstance(current, str) and kwargs:
-        try:
-            return current.format(**kwargs)
-        except (KeyError, ValueError):
-            return current
-    
-    return current
 
 
 async def calculate_stars_price(usd_price):

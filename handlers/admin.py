@@ -3,18 +3,20 @@ import logging
 import utils
 import os
 import json
+import re
 import keyboards as kb
-from .client import send_msg
+from message_utils import send_msg
 from database import user, lesson
 from datetime import datetime
 from aiogram import Bot, types, Router, F
 from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
 from aiogram.filters import Command, CommandStart
 from aiogram.fsm.context import FSMContext
-from states import FSMAdminRights, FSMEditor, FSMCreateStep, FSMLesson, FSMSettings, FSMPromocode
+from states import FSMAdminRights, FSMEditor, FSMCreateStep, FSMLesson, FSMSettings, FSMPromocode, FSMTranslations
 from typing import Optional
 
-from nikolayai import bot
+# Добавляем импорт глобального bot из bot_instance
+from bot_instance import bot
 
 router = Router()
 
@@ -426,6 +428,16 @@ async def stepCreate(message: types.Message, state: FSMCreateStep):
 
 # ===== NEW SHOP ADMIN HANDLERS =====
 
+def markup_admin_settings():
+    """Admin settings keyboard"""
+    items = [
+        [InlineKeyboardButton(text=str(utils.get_text('admin.buttons.currency_settings')), callback_data='currency_rate')],
+        [InlineKeyboardButton(text=str(utils.get_text('admin.buttons.text_settings')), callback_data='text_settings')],
+        [InlineKeyboardButton(text="🌐 Переводы", callback_data='translations')],
+        [InlineKeyboardButton(text=str(utils.get_text('admin.buttons.back_admin')), callback_data='backAdmin')]
+    ]
+    return InlineKeyboardMarkup(inline_keyboard=items)
+
 @router.callback_query(F.data == 'lessons_mgmt')
 async def lessons_management(call: types.CallbackQuery, state: FSMContext):
     """Lessons management menu"""
@@ -810,12 +822,38 @@ async def delete_lesson_execute(message: types.Message, state: FSMContext):
         await state.clear()
 
 
+@router.callback_query(F.data == 'statDiagram')
+async def show_statistics(call: types.CallbackQuery, state: FSMContext):
+    """Show admin statistics"""
+    data_admins = utils.get_admins()
+    
+    if(call.from_user.id not in config.ADMINS and call.from_user.id not in data_admins):
+        await call.answer()
+        return
+    
+    await call.answer()
+    
+    try:
+        text = utils.get_text('admin.messages.gen_stats')
+        await call.message.edit_text(
+            text,
+            reply_markup=kb.markup_admin_shop(call.from_user.id)
+        )
+        
+    except Exception as e:
+        logging.error(f"Error in show_statistics: {e}")
+        await call.message.edit_text(
+            utils.get_text('messages.error_occurred'),
+            reply_markup=kb.markup_admin_shop(call.from_user.id)
+        )
+
+
 @router.callback_query(F.data == 'statistics')
 async def show_statistics(call: types.CallbackQuery, state: FSMContext):
     """Show admin statistics"""
     data_admins = utils.get_admins()
     
-    if(call.from_user.id not in config.ADMINS and call.from_user.id not in data_admin_admin):
+    if(call.from_user.id not in config.ADMINS and call.from_user.id not in data_admins):
         await call.answer()
         return
     
@@ -1012,90 +1050,99 @@ async def cancel_currency_edit(call: types.CallbackQuery, state: FSMContext):
         reply_markup=kb.markup_admin_settings()
     )
 
-
-@router.message(FSMSettings.text_value)
-async def text_value_update(message: types.Message, state: FSMContext):
-    """Update text value in JSON"""
+@router.callback_query(F.data == 'translations')
+async def translations_menu(call: types.CallbackQuery, state: FSMContext):
+    """Start translations management"""
     data_admins = utils.get_admins()
-    
-    if(message.from_user.id not in config.ADMINS and message.from_user.id not in data_admin_admin):
-        await message.answer('⚠️ Ошибка доступа')
-        await state.clear()
-        return
-    
-    new_value = message.text
-    if(not utils.validate_html_text(new_value)):
-        await message.answer("❌ Некорректный HTML: убедитесь, что теги закрыты (например <b>текст</b>). Попробуйте снова:")
-        return
-    
-    state_data = await state.get_data()
-    category = state_data['category']
-    key = state_data['key']
-    
-    texts = utils.get_interface_texts()
-    texts[category][key] = new_value
-    utils.update_interface_texts(texts)
-    
-    await message.answer(f"✅ Текст для {category}.{key} обновлен:\n{new_value}")
-    await state.clear()
-    
-    await message.answer(
-        "⚙️ <b>Настройки системы</b>\n\nВыберите раздел:",
-        reply_markup=kb.markup_admin_settings()
-    )
-
-@router.callback_query(F.data == 'cancel_text')
-async def cancel_text_edit(call: types.CallbackQuery, state: FSMContext):
-    """Cancel text editing and return to settings"""
-    data_admins = utils.get_admins()
-    
     if(call.from_user.id not in config.ADMINS and call.from_user.id not in data_admins):
         await call.answer()
         return
-    
-    await state.clear()
-    await call.answer("❌ Отменено")
+    await state.set_state(FSMTranslations.language)
+    await call.answer()
     await call.message.edit_text(
-        "⚙️ <b>Настройки системы</b>\n\nВыберите раздел:",
-        reply_markup=kb.markup_admin_settings()
+        "🌐 <b>Управление переводами</b>\n\nВведите код языка (e.g. 'en' for English, 'es' for Spanish):",
+        reply_markup=kb.markup_cancel()
     )
 
+@router.message(FSMTranslations.language)
+async def translations_language(message: types.Message, state: FSMTranslations):
+    """Process language input"""
+    lang = message.text.strip().lower()
+    if len(lang) > 10 or not re.match(r'^[a-z]{2,}$', lang):
+        await message.answer("❌ Неверный код языка. Введите 2-10 букв (e.g. 'en', 'es'):")
+        return
+    await state.update_data(language=lang)
+    await state.set_state(FSMTranslations.step)
+    await message.answer(
+        "📝 Выберите шаг для перевода (e.g. 'welcome', 'video_caption', 'catalog_menu'):",
+        reply_markup=kb.markup_cancel()
+    )
 
-@router.message(FSMSettings.currency_rate)
-async def update_currency_rate(message: types.Message, state: FSMContext):
-    """Update currency rate"""
+@router.message(FSMTranslations.step)
+async def translations_step(message: types.Message, state: FSMTranslations):
+    """Process step input"""
+    step = message.text.strip()
+    if len(step) > 50:
+        await message.answer("❌ Шаг слишком длинный. Введите до 50 символов:")
+        return
+    await state.update_data(step=step)
+    await state.set_state(FSMTranslations.field)
+    await message.answer(
+        "🏷️ Выберите поле (e.g. 'text', 'caption', 'button_label'):",
+        reply_markup=kb.markup_cancel()
+    )
+
+@router.message(FSMTranslations.field)
+async def translations_field(message: types.Message, state: FSMTranslations):
+    """Process field input"""
+    field = message.text.strip()
+    if len(field) > 50:
+        await message.answer("❌ Поле слишком длинное. Введите до 50 символов:")
+        return
+    await state.update_data(field=field)
+    await state.set_state(FSMTranslations.value)
+    await message.answer(
+        "📝 Введите перевод для этого поля:",
+        reply_markup=kb.markup_cancel()
+    )
+
+@router.message(FSMTranslations.value)
+async def translations_value(message: types.Message, state: FSMTranslations):
+    """Process value input and save translation"""
+    value = message.text
+    state_data = await state.get_data()
+    lang = state_data['language']
+    step = state_data['step']
+    field = state_data['field']
+    
+    from database.lesson import Translations
+    t = Translations()
+    
     try:
-        new_rate = int(message.text)
-        if(new_rate <= 0):
-            raise ValueError
-        
-        await s.set_usd_to_stars_rate(new_rate)
-        
-        await message.answer(
-            utils.get_text('admin.messages.currency_rate_updated', rate=new_rate),
-            reply_markup=kb.markup_remove()
-        )
-        
-        await message.answer(
-            "⚙️ <b>Настройки системы</b>\n\nВыберите раздел:",
-            reply_markup=kb.markup_admin_settings()
-        )
-        
-        await state.clear()
-        
-    except ValueError:
-        await message.answer(
-            "➡️ Введите корректное число больше 0:",
-            reply_markup=kb.markup_cancel()
-        )
+        # Try to update if exists, else create
+        existing = Translations.select().where(
+            (Translations.step_id == step) &
+            (Translations.language == lang) &
+            (Translations.text_field == field)
+        ).first()
+        if existing:
+            await t.update_translation(step, lang, field, value)
+            await message.answer("✅ Перевод обновлен!")
+        else:
+            await t.create_translation(step, lang, field, value)
+            await message.answer("✅ Перевод создан!")
     except Exception as e:
-        logging.error(f"Error in update_currency_rate: {e}")
-        await message.answer(
-            utils.get_text('messages.error_occurred'),
-            reply_markup=kb.markup_admin_settings()
-        )
-        await state.clear()
-
+        logging.error(f"Error saving translation: {e}")
+        await message.answer("❌ Ошибка сохранения перевода. Попробуйте снова.")
+    
+    await state.clear()
+    await message.answer(
+        "🌐 <b>Управление переводами</b>\n\nВыберите действие:",
+        reply_markup=InlineKeyboardMarkup(inline_keyboard=[
+            [InlineKeyboardButton(text="➕ Добавить перевод", callback_data='translations')],
+            [InlineKeyboardButton(text="↩️ Назад к настройкам", callback_data='settings')]
+        ])
+    )
 
 # ===== PROMOCODES MANAGEMENT =====
 
