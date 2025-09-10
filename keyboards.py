@@ -275,6 +275,43 @@ def markup_lesson_edit_fields(lesson_id):
     return InlineKeyboardMarkup(inline_keyboard=items)
 
 
+def markup_lesson_delete_list(lessons):
+    """List of lessons for deletion"""
+    items = []
+    for lesson in lessons:
+        items.append([InlineKeyboardButton(
+            text=f"🗑️ {lesson['title']}", 
+            callback_data=f"delete_lesson_id:{lesson['id']}"
+        )])
+    items.append([InlineKeyboardButton(
+        text='↪️ Назад', 
+        callback_data='lessons_mgmt'
+    )])
+    return InlineKeyboardMarkup(inline_keyboard=items)
+
+
+def markup_confirm_delete(lesson_id):
+    """Confirm deletion keyboard"""
+    items = [
+        [
+            InlineKeyboardButton(text="✅ Да, удалить", callback_data=f"confirm_delete:{lesson_id}"),
+            InlineKeyboardButton(text="❌ Отмена", callback_data=f"cancel_delete:{lesson_id}")
+        ]
+    ]
+    return InlineKeyboardMarkup(inline_keyboard=items)
+
+
+def markup_add_preview_actions():
+    """Actions for lesson preview during creation"""
+    items = [
+        [
+            InlineKeyboardButton(text="✅ Сохранить урок", callback_data="add_lesson_save"),
+            InlineKeyboardButton(text="❌ Отмена", callback_data="add_lesson_cancel")
+        ]
+    ]
+    return InlineKeyboardMarkup(inline_keyboard=items)
+
+
 def markup_promocodes_management():
     """Promocodes management keyboard - ALWAYS IN RUSSIAN"""
     items = [

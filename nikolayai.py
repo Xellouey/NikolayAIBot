@@ -7,7 +7,7 @@ from aiogram.fsm.storage.memory import MemoryStorage
 from aiogram.client.default import DefaultBotProperties
 from aiogram.enums import ParseMode
 
-from handlers import client, admin, mail, shop, payment, support
+from handlers import client, admin, mail, shop, payment, support, cancel_handler
 from database import sql
 from database.mail import Mail
 from mail import mailing
@@ -177,11 +177,12 @@ async def main():
         
         print("📦 Загрузка обработчиков...")
         # Подключаем роутеры в порядке приоритета
-        dp.include_router(payment.payment_router)  # Обработчики платежей первыми
+        dp.include_router(cancel_handler.router)   # УНИВЕРСАЛЬНЫЙ ОБРАБОТЧИК ОТМЕНЫ ПЕРВЫМ!
+        dp.include_router(payment.payment_router)  # Обработчики платежей
         dp.include_router(support.router)          # Обработчики поддержки
-        dp.include_router(client.router)           # ✅ Обработчики клиента ПЕРВЫМИ - онбординг /start
+        dp.include_router(mail.router)             # Обработчики рассылки ПЕРЕД admin!
+        dp.include_router(client.router)           # ✅ Обработчики клиента - онбординг /start
         dp.include_router(admin.router)            # Обработчики админа
-        dp.include_router(mail.router)             # Обработчики рассылки
         dp.include_router(shop.shop_router)        # ✅ Обработчики магазина ПОСЛЕДНИМИ - только callback'и
         print("✅ Все обработчики загружены успешно")
         

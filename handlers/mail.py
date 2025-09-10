@@ -15,7 +15,7 @@ from localization import get_text
 
 
 logging.basicConfig(
-    level=logging.ERROR,
+    level=logging.INFO,
     format="%(asctime)s - %(levelname)s - %(name)s - %(filename)s - %(message)s",
     # filename='file.log'
 )
@@ -34,7 +34,17 @@ async def mailingFirstLine(call: types.CallbackQuery, state: FSMContext):
     
     
 @router.message(FSMMail.date_mail)
-async def takeMailDatetime(message: types.Message, state: FSMMail):
+async def takeMailDatetime(message: types.Message, state: FSMContext):
+    logging.info(f"FSMMail.date_mail: получено сообщение: '{message.text}'")
+    
+    # Обработка отмены
+    if message.text and message.text == '❌ Отмена':
+        logging.info("Кнопка отмены нажата в date_mail")
+        await state.clear()
+        await message.answer('❌ Рассылка отменена', reply_markup=kb.markup_remove())
+        await message.answer('Выберите действие:', reply_markup=kb.markup_admin(message.from_user.id))
+        return
+    
     if message.text == '➡️ Пропустить':
         # Для немедленной отправки - время на 10 секунд в прошлом
         date_mail = dt.now() - timedelta(seconds=10)
@@ -54,8 +64,18 @@ async def takeMailDatetime(message: types.Message, state: FSMMail):
 
     
 @router.message(FSMMail.media)
-async def takeMailMedia(message: types.Message, state: FSMMail):
+async def takeMailMedia(message: types.Message, state: FSMContext):
     """Принимаем фото/видео или пропуск"""
+    logging.info(f"📷 FSMMail.media: получено сообщение: '{message.text}'")
+    
+    # Обработка отмены
+    if message.text and message.text == '❌ Отмена':
+        logging.info("✅ Кнопка отмены нажата в media")
+        await state.clear()
+        await message.answer('❌ Рассылка отменена', reply_markup=kb.markup_remove())
+        await message.answer('Выберите действие:', reply_markup=kb.markup_admin(message.from_user.id))
+        return
+    
     media = None
     media_type = None
 
@@ -66,7 +86,7 @@ async def takeMailMedia(message: types.Message, state: FSMMail):
     elif message.video:
         media = message.video.file_id
         media_type = 'video'
-    elif message.text and message.text.lower() == '➡️ пропустить':
+    elif message.text and message.text == '➡️ Пропустить':
         media = None
         media_type = None
     else:
@@ -79,7 +99,17 @@ async def takeMailMedia(message: types.Message, state: FSMMail):
 
 
 @router.message(FSMMail.message)
-async def takeMailMessage(message: types.Message, state: FSMMail):
+async def takeMailMessage(message: types.Message, state: FSMContext):
+    logging.info(f"💬 FSMMail.message: получено сообщение: '{message.text}'")
+    
+    # Обработка отмены
+    if message.text and message.text == '❌ Отмена':
+        logging.info("✅ Кнопка отмены нажата в message")
+        await state.clear()
+        await message.answer('❌ Рассылка отменена', reply_markup=kb.markup_remove())
+        await message.answer('Выберите действие:', reply_markup=kb.markup_admin(message.from_user.id))
+        return
+    
     message_id = message.message_id
     from_id = message.from_user.id
     
@@ -119,8 +149,18 @@ async def copy_json_callback(call: types.CallbackQuery):
   
     
 @router.message(FSMMail.keyboard)
-async def takeMailkeyboard(message: types.Message, state: FSMMail):    
-    if message.text.lower() == '➡️ пропустить':
+async def takeMailkeyboard(message: types.Message, state: FSMContext):    
+    logging.info(f"⌨️ FSMMail.keyboard: получено сообщение: '{message.text}'")
+    
+    # Обработка отмены
+    if message.text and message.text == '❌ Отмена':
+        logging.info("✅ Кнопка отмены нажата в keyboard")
+        await state.clear()
+        await message.answer('❌ Рассылка отменена', reply_markup=kb.markup_remove())
+        await message.answer('Выберите действие:', reply_markup=kb.markup_admin(message.from_user.id))
+        return
+    
+    if message.text == '➡️ Пропустить':
         keyboard = None
     else:
         text = message.text.strip()
@@ -182,8 +222,18 @@ async def takeMailkeyboard(message: types.Message, state: FSMMail):
     
 @router.message(FSMMail.confirm)
 async def takeMailConfirm(message: types.Message, state: FSMContext):
+    logging.info(f"✔️ FSMMail.confirm: получено сообщение: '{message.text}'")
+    
+    # Обработка отмены
+    if message.text and message.text == '❌ Отмена':
+        logging.info("✅ Кнопка отмены нажата в confirm")
+        await state.clear()
+        await message.answer('❌ Рассылка отменена', reply_markup=kb.markup_remove())
+        await message.answer('Выберите действие:', reply_markup=kb.markup_admin(message.from_user.id))
+        return
+    
     try:
-        if message.text.lower() != '✅ да':
+        if message.text != '✅ Да':
             await message.answer('👉 Вы уверены, что хотите разослать это сообщение?', reply_markup=kb.markup_confirm())
             return
     except:

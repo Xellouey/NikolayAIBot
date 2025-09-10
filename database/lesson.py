@@ -92,6 +92,87 @@ class Lesson(peewee.Model):
         except Exception as e:
             print(f"❌ Ошибка увеличения просмотров: {e}")
             return False
+    
+    async def create_lesson(self, title, description, price_usd, 
+                           is_free=False, is_active=True, 
+                           content_type='video', video_file_id=None,
+                           preview_video_file_id=None, preview_text=None,
+                           text_content=None, document_file_id=None, **kwargs):
+        """Create new lesson"""
+        try:
+            lesson = Lesson.create(
+                title=title,
+                description=description,
+                price_usd=price_usd,
+                is_free=is_free,
+                is_active=is_active,
+                content_type=content_type,
+                video_file_id=video_file_id,
+                preview_video_file_id=preview_video_file_id,
+                preview_text=preview_text,
+                text_content=text_content,
+                document_file_id=document_file_id,
+                created_at=datetime.now(),
+                updated_at=datetime.now(),
+                **kwargs
+            )
+            print(f"✅ Урок '{title}' успешно создан с ID {lesson.id}")
+            return lesson.id
+        except Exception as e:
+            print(f"❌ Ошибка создания урока: {e}")
+            raise
+    
+    async def update_lesson(self, lesson_id, **fields):
+        """Update lesson fields"""
+        try:
+            # Проверяем существование урока
+            lesson = Lesson.get_or_none(Lesson.id == lesson_id)
+            if not lesson:
+                print(f"❌ Урок с ID {lesson_id} не найден")
+                return False
+            
+            # Обновляем поля
+            fields['updated_at'] = datetime.now()
+            
+            query = Lesson.update(**fields).where(Lesson.id == lesson_id)
+            rows_updated = query.execute()
+            
+            if rows_updated > 0:
+                print(f"✅ Урок ID {lesson_id} обновлен")
+                return True
+            else:
+                print(f"⚠️ Урок ID {lesson_id} не был обновлен")
+                return False
+                
+        except Exception as e:
+            print(f"❌ Ошибка обновления урока {lesson_id}: {e}")
+            return False
+    
+    async def delete_lesson(self, lesson_id):
+        """Delete lesson"""
+        try:
+            # Проверяем существование урока
+            lesson = Lesson.get_or_none(Lesson.id == lesson_id)
+            if not lesson:
+                print(f"❌ Урок с ID {lesson_id} не найден")
+                return False
+            
+            # Удаляем связанные покупки
+            Purchase.delete().where(Purchase.lesson_id == lesson_id).execute()
+            
+            # Удаляем урок
+            rows_deleted = Lesson.delete().where(Lesson.id == lesson_id).execute()
+            
+            if rows_deleted > 0:
+                print(f"✅ Урок ID {lesson_id} удален")
+                return True
+            else:
+                print(f"⚠️ Урок ID {lesson_id} не был удален")
+                return False
+                
+        except Exception as e:
+            print(f"❌ Ошибка удаления урока {lesson_id}: {e}")
+            return False
 
 
 class Purchase(peewee.Model):
