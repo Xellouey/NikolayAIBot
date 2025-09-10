@@ -66,7 +66,7 @@ async def takeMailMessage(message: types.Message, state: FSMMail):
     # Кнопки для копирования конкретного примера JSON
     inline_kb = types.InlineKeyboardMarkup(inline_keyboard=[
         [types.InlineKeyboardButton(text=get_text('mail.buttons.copy_inline'), callback_data='copy_json_inline')],
-        [types.InlineKeyboardButton(text=get_text('mail.buttons.copy_keyboard'), callback_data='copy_json_keyboard')]
+        [types.InlineKeyboardButton(text=get_text('mail.buttons.copy_callback'), callback_data='copy_json_callback')]
     ])
     reply_kb = types.ReplyKeyboardMarkup(keyboard=[[types.KeyboardButton(text='➡️ Пропустить'), types.KeyboardButton(text='❌ Отмена')]], resize_keyboard=True)
     
@@ -83,13 +83,13 @@ async def copy_json_inline(call: types.CallbackQuery):
         f'📋 <b>Inline-клавиатура (JSON):</b>\n\n<code>{example_json}</code>\n\nНажмите на текст выше чтобы скопировать'
     )
 
-@router.callback_query(F.data == 'copy_json_keyboard')
-async def copy_json_keyboard(call: types.CallbackQuery):
-    """Send REPLY KEYBOARD JSON example for easy copying"""
+@router.callback_query(F.data == 'copy_json_callback')
+async def copy_json_callback(call: types.CallbackQuery):
+    """Send callback buttons JSON example for easy copying"""
     await call.answer()
-    example_json = get_text('mail.messages.json_example_keyboard')
+    example_json = get_text('mail.messages.json_example_callback')
     await call.message.answer(
-        f'⌨️ <b>Обычная клавиатура (JSON):</b>\n\n<code>{example_json}</code>\n\nНажмите на текст выше чтобы скопировать'
+        f'🔘 <b>Inline-клавиатура с callback (JSON):</b>\n\n<code>{example_json}</code>\n\nНажмите на текст выше чтобы скопировать'
     )
   
     
@@ -119,7 +119,7 @@ async def takeMailkeyboard(message: types.Message, state: FSMMail):
             # Показать две кнопки для примеров снова
             inline_kb = types.InlineKeyboardMarkup(inline_keyboard=[
                 [types.InlineKeyboardButton(text=get_text('mail.buttons.copy_inline'), callback_data='copy_json_inline')],
-                [types.InlineKeyboardButton(text=get_text('mail.buttons.copy_keyboard'), callback_data='copy_json_keyboard')]
+                [types.InlineKeyboardButton(text=get_text('mail.buttons.copy_callback'), callback_data='copy_json_callback')]
             ])
             await message.answer(
                 '❌ Неверный формат JSON. Попробуйте ещё раз или скопируйте пример выше:',

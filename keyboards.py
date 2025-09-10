@@ -55,18 +55,32 @@ def markup_confirm():
 
 
 def markup_custom(keyboard):
-    if keyboard == None:
+    """Create custom inline keyboard from JSON data"""
+    if keyboard is None:
         return None
     
-    items = []
-
-    for button in keyboard:
-        for name in button:
-            url = button[name]
-            items.append([InlineKeyboardButton(text=name, url=url)])
-        
-    markup_custom = InlineKeyboardMarkup(inline_keyboard=items)
-    return markup_custom
+    # Handle inline_keyboard format
+    if isinstance(keyboard, dict) and 'inline_keyboard' in keyboard:
+        # Standard Telegram inline keyboard format
+        items = []
+        for row in keyboard['inline_keyboard']:
+            button_row = []
+            for button in row:
+                if 'text' in button:
+                    btn_params = {'text': button['text']}
+                    # Add URL if present
+                    if 'url' in button:
+                        btn_params['url'] = button['url']
+                    # Add callback_data if present
+                    elif 'callback_data' in button:
+                        btn_params['callback_data'] = button['callback_data']
+                    button_row.append(InlineKeyboardButton(**btn_params))
+            if button_row:
+                items.append(button_row)
+        return InlineKeyboardMarkup(inline_keyboard=items)
+    
+    # Fallback for legacy format (if any)
+    return None
 
 
 # Functions markup_editor and markup_edit removed - no longer needed

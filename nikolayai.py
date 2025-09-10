@@ -97,6 +97,10 @@ async def mail_scheduler():
             # Сначала получаем список ожидающих рассылок
             wait_mails = await m.get_wait_mails()
             
+            # Проверяем что wait_mails - это список
+            if not wait_mails:
+                wait_mails = []
+            
             for mail_data in wait_mails:
                 if not isinstance(mail_data, dict):
                     logging.warning(f"Skipping non-dict mail_data: {type(mail_data)}")
