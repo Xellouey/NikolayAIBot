@@ -48,11 +48,36 @@ async def takeMailDatetime(message: types.Message, state: FSMMail):
             return 
         
     await state.update_data(date_mail=date_mail)
-    await state.set_state(FSMMail.message)
+    await state.set_state(FSMMail.media)
     
-    await message.answer('👉 Отправьте ваше сообщение:', reply_markup=kb.markup_cancel())
+    await message.answer('📷 Отправьте фото или видео для рассылки или нажмите "Пропустить"', reply_markup=kb.markup_pass())
 
     
+@router.message(FSMMail.media)
+async def takeMailMedia(message: types.Message, state: FSMMail):
+    """Принимаем фото/видео или пропуск"""
+    media = None
+    media_type = None
+
+    # Проверяем тип вложений
+    if message.photo:
+        media = message.photo[-1].file_id  # наибольшее качество
+        media_type = 'photo'
+    elif message.video:
+        media = message.video.file_id
+        media_type = 'video'
+    elif message.text and message.text.lower() == '➡️ пропустить':
+        media = None
+        media_type = None
+    else:
+        await message.answer('❌ Отправьте фото/видео или нажмите "Пропустить"', reply_markup=kb.markup_pass())
+        return
+
+    await state.update_data(media=media, media_type=media_type)
+    await state.set_state(FSMMail.message)
+    await message.answer('👉 Отправьте ваше сообщение:', reply_markup=kb.markup_cancel())
+
+
 @router.message(FSMMail.message)
 async def takeMailMessage(message: types.Message, state: FSMMail):
     message_id = message.message_id
@@ -133,8 +158,25 @@ async def takeMailkeyboard(message: types.Message, state: FSMMail):
     stateData = await state.get_data()
     message_id = stateData['message_id']
     from_id = stateData['from_id']
+    media = stateData.get('media')
+    media_type = stateData.get('media_type')
     
-    await bot.copy_message(message.from_user.id, from_id, message_id, reply_markup=kb.markup_custom(keyboard))
+    # Показываем предпросмотр сообщения
+    if media and media_type:
+        # Получаем текст сообщения
+        text_message = await bot.forward_message(message.from_user.id, from_id, message_id)
+        text = text_message.text or text_message.caption or ''
+        await text_message.delete()
+        
+        # Отправляем медиа с текстом
+        if media_type == 'photo':
+            await bot.send_photo(message.from_user.id, media, caption=text, reply_markup=kb.markup_custom(keyboard))
+        elif media_type == 'video':
+            await bot.send_video(message.from_user.id, media, caption=text, reply_markup=kb.markup_custom(keyboard))
+    else:
+        # Просто копируем сообщение без медиа
+        await bot.copy_message(message.from_user.id, from_id, message_id, reply_markup=kb.markup_custom(keyboard))
+    
     await message.answer('👉 Вы уверены, что хотите разослать это сообщение?', reply_markup=kb.markup_confirm())
     
     
@@ -153,14 +195,23 @@ async def takeMailConfirm(message: types.Message, state: FSMContext):
     message_id = stateData['message_id']
     from_id = stateData['from_id']
     keyboard = stateData['keyboard']
+    media = stateData.get('media')
+    media_type = stateData.get('media_type')
     await state.clear()
 
     date_mail_str = date_mail.strftime('%d.%m.%Y %H:%M')
 
-    await m.create_mail(date_mail, message_id, from_id, keyboard)
+    # Получаем текст сообщения
+    preview_msg = await bot.forward_message(message.from_user.id, from_id, message_id)
+    text = preview_msg.text or preview_msg.caption or ''
+    await preview_msg.delete()
+
+    # Сохраняем в базе с медиа и текстом
+    message_info = {"text": text, "media": media, "media_type": media_type}
+    await m.create_mail(date_mail, message_id, from_id, keyboard, message_text=message_info)
     
     if date_mail < dt.now():
-        await mailing(message_id, from_id, keyboard)
+        await mailing(message_id, from_id, keyboard, message_info=message_info)
         await message.answer('✅ Рассылка отправлена мгновенно', reply_markup=kb.markup_remove())
     else:
         await message.answer(f'✅ Рассылка будет запущена {date_mail_str}', reply_markup=kb.markup_remove())

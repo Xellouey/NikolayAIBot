@@ -118,9 +118,10 @@ async def mail_scheduler():
                     from_id = mail_data['from_id']
                     keyboard_str = mail_data.get('keyboard')
                     keyboard = json.loads(keyboard_str) if keyboard_str else None
+                    message_text = mail_data.get('message_text')
                     
                     logging.info(f"🚀 Запуск рассылки ID {mail_id}")
-                    await mailing(message_id, from_id, keyboard)
+                    await mailing(message_id, from_id, keyboard, message_info=message_text)
                     
                     # Обновляем статус на 'sent' только если mailing успешен
                     await m.update_mail(mail_id, 'status', 'sent')
