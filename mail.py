@@ -20,7 +20,6 @@ logging.basicConfig(
 
 
 async def mailing(message_id, from_id, keyboard):
-    print(f'Start mailing {message_id}, from {from_id}')
     logging.info(f'Start mailing {message_id}, from {from_id}')
 
     users = await u.get_all_users()
@@ -48,14 +47,7 @@ async def mailing(message_id, from_id, keyboard):
         except Exception as e:
             print(e)
             
-    print(f'Success mailing {message_id}, from {from_id}')
     logging.info(f'Success mailing ({i}/{len(users)}) {message_id}, from {from_id}')
-    
-    for admin in config.ADMINS:
-        try:
-            await bot.send_message(admin, f'📬 Рассылка ({i}/{len(users)})')
-        except:
-            pass
 
 
 def start_mail(message_id, from_id, keyboard):
