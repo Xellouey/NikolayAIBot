@@ -14,10 +14,9 @@ _INTERFACE_TEXTS = None
 
 
 def _load_interface_texts() -> Dict:
-    """Load interface texts JSON once (dynamically reloaded)."""
+    """Load interface texts JSON (dynamically reloaded on each call)."""
     global _INTERFACE_TEXTS
-    if _INTERFACE_TEXTS is not None:
-        return _INTERFACE_TEXTS
+    # Always reload to get latest changes
     try:
         base_dir = os.path.dirname(__file__)
         path = os.path.join(base_dir, 'json', 'interface_texts.json')

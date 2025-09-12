@@ -512,8 +512,6 @@ def markup_text_keys(category):
     items = []
     for key in keys:
         value = texts[category][key]
-        # Log type for diagnostics
-        logging.info(f"Value type for key '{key}' in category '{category}': {type(value)}")
         # Type check and fallback
         if not isinstance(value, str):
             logging.warning(f"Non-string value for key '{key}' in category '{category}': {value}. Converting to str.")

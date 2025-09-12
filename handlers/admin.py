@@ -49,6 +49,8 @@ async def admin(message: types.Message, state: FSMContext):
         text_rights = "Вы обладаетe всиими правами главного администратора! 🔑"
     elif(message.from_user.id in data_admins):
         text_rights = "Вы обладаетe правами администратора! 🔑"
+    else:
+        text_rights = "Права администратора не определены"
         
     await message.answer(f"""
 ## Добро пожаловать, Администратор! 👽
@@ -73,6 +75,8 @@ async def backAdmin(call: types.CallbackQuery, state: FSMContext):
         text_rights = "Вы обладаетe всиими правами главного администратора! 🔑"
     elif(call.from_user.id in data_admins):
         text_rights = "Вы обладаетe правами администратора! 🔑"
+    else:
+        text_rights = "Права администратора не определены"
         
     await call.answer()
     await call.message.edit_text(f"""
@@ -132,6 +136,8 @@ async def cancel_admin_rights(call: types.CallbackQuery, state: FSMContext):
         text_rights = "Вы обладаетe всиими правами главного администратора! 🔑"
     elif call.from_user.id in data_admins:
         text_rights = "Вы обладаетe правами администратора! 🔑"
+    else:
+        text_rights = "Права администратора не определены"
         
     await call.answer("❌ Отменено")
     await call.message.edit_text(f"""
@@ -294,6 +300,11 @@ async def add_lesson_price(message: types.Message, state: FSMContext):
     mode = data.get('mode', 'add')
     
     try:
+        # Check if message.text is None
+        if message.text is None:
+            await message.answer('❌ Неверный формат цены. Введите число:')
+            return
+        
         price = Decimal(message.text.strip())
         if price < 0:
             await message.answer('❌ Цена не может быть отрицательной. Введите корректную цену:')
