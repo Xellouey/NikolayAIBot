@@ -145,10 +145,18 @@ async def markup_catalog(lessons):
     return InlineKeyboardMarkup(inline_keyboard=items)
 
 
-def markup_lesson_details(lesson_id, user_has_lesson=False, show_promocode=True, is_free=False, lang='ru'):
+def markup_lesson_details(lesson_id, user_has_lesson=False, show_promocode=True, is_free=False, has_preview=False, lang='ru'):
     """Lesson details keyboard"""
     from localization import get_text
     items = []
+    
+    # Кнопка превью (только если есть превью и пользователь не владеет уроком)
+    if has_preview and not user_has_lesson:
+        items.append([InlineKeyboardButton(
+            text="🎬 Посмотреть превью", 
+            callback_data=f"show_preview:{lesson_id}"
+        )])
+    
     if not user_has_lesson:
         if is_free:
             # Бесплатный урок - кнопка "Получить бесплатно"
@@ -168,6 +176,7 @@ def markup_lesson_details(lesson_id, user_has_lesson=False, show_promocode=True,
                     text=get_text('buttons.enter_promocode', lang), 
                     callback_data=f"promocode:{lesson_id}"
                 )])
+    
     items.append([InlineKeyboardButton(
         text=get_text('btn_back', lang), 
         callback_data='catalog'
@@ -296,10 +305,7 @@ def markup_lesson_edit_fields(lesson_id):
         [InlineKeyboardButton(text="💰 Цена", callback_data=f"edit_field:price:{lesson_id}")],
         [InlineKeyboardButton(text="🎬 Видео", callback_data=f"edit_field:video:{lesson_id}")],
         [InlineKeyboardButton(text="🎭 Превью", callback_data=f"edit_field:preview:{lesson_id}")],
-        [
-            InlineKeyboardButton(text="✅ Активность", callback_data=f"toggle_active:{lesson_id}"),
-            InlineKeyboardButton(text="🎁 Бесплатный", callback_data=f"toggle_free:{lesson_id}")
-        ],
+        [InlineKeyboardButton(text="✅ Активность", callback_data=f"toggle_active:{lesson_id}")],
         [InlineKeyboardButton(
             text='↪️ Назад', 
             callback_data='edit_lesson'

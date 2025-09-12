@@ -1,4 +1,4 @@
-"""Admin handlers for lead magnet management"""
+"""Admin handlers for lead magnet management with multi-content support"""
 import logging
 import config
 import utils
@@ -18,24 +18,46 @@ logging.basicConfig(
 )
 
 
-def markup_lead_magnet_menu(is_enabled: bool, has_video: bool):
+def markup_content_type_selection():
+    """Content type selection menu"""
+    items = [
+        [InlineKeyboardButton(text='🎬 Видео', callback_data='lead_select_video')],
+        [InlineKeyboardButton(text='🖼️ Фото', callback_data='lead_select_photo')],
+        [InlineKeyboardButton(text='📁 Файл/Документ', callback_data='lead_select_document')],
+        [InlineKeyboardButton(text='❌ Отмена', callback_data='cancel_lead_edit')]
+    ]
+    
+    return InlineKeyboardMarkup(inline_keyboard=items)
+
+
+def markup_lead_magnet_menu(is_enabled: bool, content_type: str = None, has_content: bool = False):
     """Lead magnet management menu keyboard - ALWAYS IN RUSSIAN"""
     toggle_text = "🔴 Выключить" if is_enabled else "🟢 Включить"
     
     items = [
         [InlineKeyboardButton(text=toggle_text, callback_data='lead_toggle')],
         [InlineKeyboardButton(text='✏️ Изменить приветственный текст', callback_data='lead_edit_text')],
-        [InlineKeyboardButton(text='🎬 Изменить видео', callback_data='lead_edit_video')],
-        [InlineKeyboardButton(text='🏷️ Изменить название в «Моих уроках»', callback_data='lead_edit_label')],
     ]
     
-    if has_video:
+    # Динамическая кнопка для контента
+    if not has_content:
+        items.append([InlineKeyboardButton(text='📎 Добавить контент', callback_data='lead_add_content')])
+    else:
+        items.append([InlineKeyboardButton(text='📎 Изменить загружаемый контент', callback_data='lead_edit_content')])
+    
+    items.append([InlineKeyboardButton(text='🏷️ Изменить название в «Моих уроках»', callback_data='lead_edit_label')])
+    
+    if has_content:
         items.append([InlineKeyboardButton(text='👁️ Предпросмотр', callback_data='lead_preview')])
     
     items.append([InlineKeyboardButton(text='↪️ Назад', callback_data='backAdmin')])
     
     return InlineKeyboardMarkup(inline_keyboard=items)
 
+
+# =============================================================================
+# ОСНОВНОЕ МЕНЮ И НАВИГАЦИЯ
+# =============================================================================
 
 @router.callback_query(F.data == 'lead_magnet')
 async def lead_magnet_menu(call: types.CallbackQuery, state: FSMContext):
@@ -58,13 +80,30 @@ async def lead_magnet_menu(call: types.CallbackQuery, state: FSMContext):
         )
         return
     
+    # Определяем тип и наличие контента
+    content_type, file_id = await LeadMagnet.get_current_content()
+    has_content = file_id is not None
+    
+    # Текст статуса контента
+    if has_content:
+        if content_type == 'video':
+            content_status = '🎬 Видео загружено'
+        elif content_type == 'photo':
+            content_status = '🖼️ Фото загружено'
+        elif content_type == 'document':
+            content_status = '📁 Файл загружен'
+        else:
+            content_status = '✅ Контент загружен'
+    else:
+        content_status = '❌ Контент не загружен'
+    
     text = f"""
 🎬 <b>Управление лид-магнитом</b>
 
-Лид-магнит — это вводное видео, которое показывается новым пользователям при первом входе в бота.
+Лид-магнит — это вводной контент (видео, фото или файл), который показывается новым пользователям при первом входе в бота.
 
 📊 Текущий статус: {'✅ Включен' if lead_magnet.enabled else '❌ Выключен'}
-🎬 Видео: {'✅ Загружено' if lead_magnet.video_file_id else '❌ Не загружено'}
+{content_status}
 
 Выберите действие:
 """
@@ -73,7 +112,8 @@ async def lead_magnet_menu(call: types.CallbackQuery, state: FSMContext):
         text,
         reply_markup=markup_lead_magnet_menu(
             lead_magnet.enabled, 
-            bool(lead_magnet.video_file_id)
+            content_type,
+            has_content
         ),
         parse_mode='HTML'
     )
@@ -93,9 +133,10 @@ async def lead_toggle(call: types.CallbackQuery, state: FSMContext):
         await call.answer("❌ Ошибка")
         return
     
-    # Check if video exists before enabling
-    if not lead_magnet.enabled and not lead_magnet.video_file_id:
-        await call.answer("❌ Сначала загрузите видео!", show_alert=True)
+    # Check if content exists before enabling
+    content_type, file_id = await LeadMagnet.get_current_content()
+    if not lead_magnet.enabled and not file_id:
+        await call.answer("❌ Сначала загрузите контент!", show_alert=True)
         return
     
     # Toggle status
@@ -109,6 +150,202 @@ async def lead_toggle(call: types.CallbackQuery, state: FSMContext):
     else:
         await call.answer("❌ Ошибка изменения статуса")
 
+
+# =============================================================================
+# НОВЫЕ ОБРАБОТЧИКИ ДЛЯ ВЫБОРА ТИПА КОНТЕНТА
+# =============================================================================
+
+@router.callback_query(F.data == 'lead_add_content')
+@router.callback_query(F.data == 'lead_edit_content')
+async def lead_content_menu(call: types.CallbackQuery, state: FSMContext):
+    """Show content type selection menu"""
+    data_admins = utils.get_admins()
+    
+    if call.from_user.id not in config.ADMINS and call.from_user.id not in data_admins:
+        await call.answer()
+        return
+    
+    await call.answer()
+    await state.set_state(FSMLeadMagnet.selecting_content_type)
+    
+    await call.message.edit_text(
+        """📎 <b>Выбор типа контента</b>
+
+Выберите, какой тип контента вы хотите загрузить:
+
+🎬 <b>Видео</b> - обучающие видеоролики
+🖼️ <b>Фото</b> - инфографика, схемы, иллюстрации
+📁 <b>Файл</b> - PDF, документы, презентации
+
+📝 <b>Ссылки</b> можно указать в приветственном тексте.""",
+        reply_markup=markup_content_type_selection(),
+        parse_mode='HTML'
+    )
+
+
+@router.callback_query(F.data == 'lead_select_video')
+async def lead_select_video(call: types.CallbackQuery, state: FSMContext):
+    """Start video upload"""
+    await call.answer()
+    await state.set_state(FSMLeadMagnet.uploading_video)
+    
+    cancel_keyboard = InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="❌ Отмена", callback_data="cancel_lead_edit")]
+    ])
+    
+    await call.message.edit_text(
+        """🎬 <b>Загрузка видео</b>
+
+Отправьте видео, которое будет показываться новым пользователям.
+
+⚠️ Требования:
+• Формат: MP4
+• Максимальный размер: 50 МБ
+• Рекомендуемая длительность: до 2 минут""",
+        reply_markup=cancel_keyboard,
+        parse_mode='HTML'
+    )
+
+
+@router.callback_query(F.data == 'lead_select_photo')
+async def lead_select_photo(call: types.CallbackQuery, state: FSMContext):
+    """Start photo upload"""
+    await call.answer()
+    await state.set_state(FSMLeadMagnet.uploading_photo)
+    
+    cancel_keyboard = InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="❌ Отмена", callback_data="cancel_lead_edit")]
+    ])
+    
+    await call.message.edit_text(
+        """🖼️ <b>Загрузка фото</b>
+
+Отправьте фото, которое будет показываться новым пользователям.
+
+⚠️ Требования:
+• Формат: JPG, PNG
+• Максимальный размер: 10 МБ
+• Рекомендуемое разрешение: 1080x1920 или меньше""",
+        reply_markup=cancel_keyboard,
+        parse_mode='HTML'
+    )
+
+
+@router.callback_query(F.data == 'lead_select_document')
+async def lead_select_document(call: types.CallbackQuery, state: FSMContext):
+    """Start document upload"""
+    await call.answer()
+    await state.set_state(FSMLeadMagnet.uploading_document)
+    
+    cancel_keyboard = InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="❌ Отмена", callback_data="cancel_lead_edit")]
+    ])
+    
+    await call.message.edit_text(
+        """📁 <b>Загрузка файла/документа</b>
+
+Отправьте файл, который будет показываться новым пользователям.
+
+⚠️ Требования:
+• Формат: PDF, DOC, DOCX, TXT, и др.
+• Максимальный размер: 20 МБ
+• Рекомендация: добавьте описание в приветственный текст""",
+        reply_markup=cancel_keyboard,
+        parse_mode='HTML'
+    )
+
+
+# =============================================================================
+# ОБРАБОТЧИКИ ЗАГРУЗКИ КОНТЕНТА
+# =============================================================================
+
+@router.message(FSMLeadMagnet.uploading_video)
+async def process_video(message: types.Message, state: FSMContext):
+    """Process uploaded video"""
+    if message.content_type != 'video':
+        await message.answer("❌ Отправьте видео файл")
+        return
+    
+    video = message.video
+    
+    # Check video size (50 MB limit)
+    if video.file_size > 50 * 1024 * 1024:
+        await message.answer("❌ Видео слишком большое. Максимум 50 МБ.")
+        return
+    
+    # Save video using new method
+    success = await LeadMagnet.set_content('video', video.file_id)
+    
+    if success:
+        await message.answer("✅ Видео успешно загружено!")
+    else:
+        await message.answer("❌ Ошибка сохранения видео")
+    
+    await state.clear()
+    
+    # Возврат в меню
+    await _return_to_main_menu(message)
+
+
+@router.message(FSMLeadMagnet.uploading_photo)
+async def process_photo(message: types.Message, state: FSMContext):
+    """Process uploaded photo"""
+    if message.content_type != 'photo':
+        await message.answer("❌ Отправьте фото")
+        return
+    
+    photo = message.photo[-1]  # Получаем фото максимального размера
+    
+    # Check photo size (10 MB limit)
+    if photo.file_size and photo.file_size > 10 * 1024 * 1024:
+        await message.answer("❌ Фото слишком большое. Максимум 10 МБ.")
+        return
+    
+    # Save photo using new method
+    success = await LeadMagnet.set_content('photo', photo.file_id)
+    
+    if success:
+        await message.answer("✅ Фото успешно загружено!")
+    else:
+        await message.answer("❌ Ошибка сохранения фото")
+    
+    await state.clear()
+    
+    # Возврат в меню
+    await _return_to_main_menu(message)
+
+
+@router.message(FSMLeadMagnet.uploading_document)
+async def process_document(message: types.Message, state: FSMContext):
+    """Process uploaded document"""
+    if message.content_type != 'document':
+        await message.answer("❌ Отправьте документ или файл")
+        return
+    
+    document = message.document
+    
+    # Check document size (20 MB limit)
+    if document.file_size > 20 * 1024 * 1024:
+        await message.answer("❌ Файл слишком большой. Максимум 20 МБ.")
+        return
+    
+    # Save document using new method
+    success = await LeadMagnet.set_content('document', document.file_id)
+    
+    if success:
+        await message.answer("✅ Файл успешно загружен!")
+    else:
+        await message.answer("❌ Ошибка сохранения файла")
+    
+    await state.clear()
+    
+    # Возврат в меню
+    await _return_to_main_menu(message)
+
+
+# =============================================================================
+# ОБРАБОТЧИКИ РЕДАКТИРОВАНИЯ ТЕКСТОВ
+# =============================================================================
 
 @router.callback_query(F.data == 'lead_edit_text')
 async def lead_edit_text_start(call: types.CallbackQuery, state: FSMContext):
@@ -160,95 +397,7 @@ async def process_greeting_text(message: types.Message, state: FSMContext):
     await state.clear()
     
     # Возврат в меню
-    lead_magnet = await LeadMagnet.get_lead_magnet()
-    text = f"""
-🎬 <b>Управление лид-магнитом</b>
-
-📊 Текущий статус: {'✅ Включен' if lead_magnet.enabled else '❌ Выключен'}
-🎬 Видео: {'✅ Загружено' if lead_magnet.video_file_id else '❌ Не загружено'}
-"""
-    
-    await message.answer(
-        text,
-        reply_markup=markup_lead_magnet_menu(
-            lead_magnet.enabled,
-            bool(lead_magnet.video_file_id)
-        ),
-        parse_mode='HTML'
-    )
-
-
-@router.callback_query(F.data == 'lead_edit_video')
-async def lead_edit_video_start(call: types.CallbackQuery, state: FSMContext):
-    """Start editing video"""
-    data_admins = utils.get_admins()
-    
-    if call.from_user.id not in config.ADMINS and call.from_user.id not in data_admins:
-        await call.answer()
-        return
-    
-    await call.answer()
-    await state.set_state(FSMLeadMagnet.editing_video)
-    
-    cancel_keyboard = InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text="❌ Отмена", callback_data="cancel_lead_edit")]
-    ])
-    
-    await call.message.edit_text(
-        """🎬 <b>Загрузка видео для лид-магнита</b>
-
-Отправьте видео, которое будет показываться новым пользователям.
-
-⚠️ Требования:
-• Формат: MP4
-• Максимальный размер: 50 МБ
-• Рекомендуемая длительность: до 2 минут""",
-        reply_markup=cancel_keyboard,
-        parse_mode='HTML'
-    )
-
-
-@router.message(FSMLeadMagnet.editing_video)
-async def process_video(message: types.Message, state: FSMContext):
-    """Process uploaded video"""
-    if message.content_type != 'video':
-        await message.answer("❌ Отправьте видео файл")
-        return
-    
-    video = message.video
-    
-    # Check video size (50 MB limit)
-    if video.file_size > 50 * 1024 * 1024:
-        await message.answer("❌ Видео слишком большое. Максимум 50 МБ.")
-        return
-    
-    # Save video file_id
-    success = await LeadMagnet.set_video(video.file_id)
-    
-    if success:
-        await message.answer("✅ Видео успешно загружено!")
-    else:
-        await message.answer("❌ Ошибка сохранения видео")
-    
-    await state.clear()
-    
-    # Возврат в меню
-    lead_magnet = await LeadMagnet.get_lead_magnet()
-    text = f"""
-🎬 <b>Управление лид-магнитом</b>
-
-📊 Текущий статус: {'✅ Включен' if lead_magnet.enabled else '❌ Выключен'}
-🎬 Видео: ✅ Загружено
-"""
-    
-    await message.answer(
-        text,
-        reply_markup=markup_lead_magnet_menu(
-            lead_magnet.enabled,
-            True
-        ),
-        parse_mode='HTML'
-    )
+    await _return_to_main_menu(message)
 
 
 @router.callback_query(F.data == 'lead_edit_label')
@@ -301,25 +450,12 @@ async def process_label(message: types.Message, state: FSMContext):
     await state.clear()
     
     # Возврат в меню
-    lead_magnet = await LeadMagnet.get_lead_magnet()
-    text = f"""
-🎬 <b>Управление лид-магнитом</b>
-
-📊 Текущий статус: {'✅ Включен' if lead_magnet.enabled else '❌ Выключен'}
-🎬 Видео: {'✅ Загружено' if lead_magnet.video_file_id else '❌ Не загружено'}
-"""
-    
-    await message.answer(
-        text,
-        reply_markup=markup_lead_magnet_menu(
-            lead_magnet.enabled,
-            bool(lead_magnet.video_file_id)
-        ),
-        parse_mode='HTML'
-    )
+    await _return_to_main_menu(message)
 
 
-
+# =============================================================================
+# ПРЕДПРОСМОТР КОНТЕНТА
+# =============================================================================
 
 @router.callback_query(F.data == 'lead_preview')
 async def lead_preview(call: types.CallbackQuery, state: FSMContext):
@@ -333,22 +469,85 @@ async def lead_preview(call: types.CallbackQuery, state: FSMContext):
     await call.answer()
     
     lead_magnet = await LeadMagnet.get_lead_magnet()
-    if not lead_magnet or not lead_magnet.video_file_id:
-        await call.answer("❌ Видео не загружено", show_alert=True)
+    content_type, file_id = await LeadMagnet.get_current_content()
+    
+    if not lead_magnet or not file_id:
+        await call.answer("❌ Контент не загружен", show_alert=True)
         return
     
     # Текст приветствия
     greeting_text = await LeadMagnet.get_text_for_locale('greeting_text', 'ru')
     
-    # Отправляем предпросмотр
-    await bot.send_video(
-        chat_id=call.from_user.id,
-        video=lead_magnet.video_file_id,
-        caption=f"🎬 <b>Предпросмотр лид-магнита</b>\n\n{greeting_text}",
+    # Отправляем предпросмотр в зависимости от типа контента
+    try:
+        if content_type == 'video':
+            await bot.send_video(
+                chat_id=call.from_user.id,
+                video=file_id,
+                caption=f"🎬 <b>Предпросмотр лид-магнита</b>\n\n{greeting_text}",
+                parse_mode='HTML'
+            )
+        elif content_type == 'photo':
+            await bot.send_photo(
+                chat_id=call.from_user.id,
+                photo=file_id,
+                caption=f"🖼️ <b>Предпросмотр лид-магнита</b>\n\n{greeting_text}",
+                parse_mode='HTML'
+            )
+        elif content_type == 'document':
+            await bot.send_document(
+                chat_id=call.from_user.id,
+                document=file_id,
+                caption=f"📁 <b>Предпросмотр лид-магнита</b>\n\n{greeting_text}",
+                parse_mode='HTML'
+            )
+        
+        await call.answer("✅ Предпросмотр отправлен")
+        
+    except Exception as e:
+        logging.error(f"Error sending preview: {e}")
+        await call.answer("❌ Ошибка отправки предпросмотра", show_alert=True)
+
+
+# =============================================================================
+# ВСПОМОГАТЕЛЬНЫЕ ФУНКЦИИ
+# =============================================================================
+
+async def _return_to_main_menu(message: types.Message):
+    """Helper function to return to main lead magnet menu"""
+    lead_magnet = await LeadMagnet.get_lead_magnet()
+    content_type, file_id = await LeadMagnet.get_current_content()
+    has_content = file_id is not None
+    
+    # Текст статуса контента
+    if has_content:
+        if content_type == 'video':
+            content_status = '🎬 Видео загружено'
+        elif content_type == 'photo':
+            content_status = '🖼️ Фото загружено'
+        elif content_type == 'document':
+            content_status = '📁 Файл загружен'
+        else:
+            content_status = '✅ Контент загружен'
+    else:
+        content_status = '❌ Контент не загружен'
+    
+    text = f"""
+🎬 <b>Управление лид-магнитом</b>
+
+📊 Текущий статус: {'✅ Включен' if lead_magnet.enabled else '❌ Выключен'}
+{content_status}
+"""
+    
+    await message.answer(
+        text,
+        reply_markup=markup_lead_magnet_menu(
+            lead_magnet.enabled,
+            content_type,
+            has_content
+        ),
         parse_mode='HTML'
     )
-    
-    await call.answer("✅ Предпросмотр отправлен")
 
 
 @router.callback_query(F.data == 'cancel_lead_edit')

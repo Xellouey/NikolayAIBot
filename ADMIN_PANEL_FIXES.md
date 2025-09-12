@@ -35,7 +35,7 @@
 - Uses the existing `json/interface_texts.json` file for storage
 - Allows editing through admin panel categories (Buttons, Messages, Admin, Mail)
 - Shows current values and allows direct text replacement
-- Requires bot restart for changes to take effect (as specified in requirements)
+- Requires immediate updates for text changes to be visible
 
 ## How to Use the Text Settings
 
@@ -66,7 +66,7 @@
 
 3. **JSON File Storage**: Uses existing `json/interface_texts.json` instead of database to keep it simple and aligned with existing architecture.
 
-4. **Restart Required**: As specified by user, changes require bot restart to take effect. This is clearly indicated to admin after each edit.
+4. **Обновление текстов**: Изменения применяются мгновенно. Пользователи сразу увидят новые тексты.
 
 ## Files Modified
 
@@ -101,7 +101,7 @@
 
 ## Important Notes
 
-1. **Bot Restart Required**: After any text changes, the bot MUST be restarted for changes to take effect. This is by design as requested.
+1. **Мгновенное обновление**: После любых изменений текста изменения применяются мгновенно без перезапуска.
 
 2. **Admin Only**: All new features are restricted to admin users only.
 
@@ -155,8 +155,8 @@ If buttons still don't work after update:
      - Запрещены теги: `<script>`, `<iframe>`, `<object>`, `<embed>`, `<form>`
      - Разрешены теги: `<b>`, `<i>`, `<u>`, `<s>`, `<code>`, `<pre>`, `<a>`
 
-6. **Перезапустите бота**
-   - ⚠️ **ВАЖНО**: Изменения вступят в силу только после перезапуска!
+6. **Текст сохранен**
+   - ✅ **Готово**: Изменения применяются мгновенно!
    - Все изменения сохраняются в файле `json/interface_texts.json`
 
 ### Примеры часто изменяемых текстов

@@ -78,8 +78,13 @@ class FSMTranslations(StatesGroup):
 class FSMLeadMagnet(StatesGroup):
     """States for lead magnet management"""
     editing_text = State()
-    editing_video = State()
     editing_label = State()
+    
+    # Content management states
+    selecting_content_type = State()
+    uploading_video = State()
+    uploading_photo = State()
+    uploading_document = State()
 
 
 # class FSMSuperPower(StatesGroup):

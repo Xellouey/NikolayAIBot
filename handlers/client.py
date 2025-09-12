@@ -30,11 +30,11 @@ logging.basicConfig(
 
 
 async def send_lead_magnet(message: types.Message, bot: Bot, lang: str = 'ru'):
-    """Send lead magnet video if enabled"""
+    """Send lead magnet content if enabled (supports video, photo, document)"""
     try:
         # Check if lead magnet is ready
         if not await LeadMagnet.is_ready():
-            print("ℹ️ Lead magnet not ready (disabled or no video)")
+            print("ℹ️ Lead magnet not ready (disabled or no content)")
             return False
         
         # Get lead magnet configuration
@@ -42,24 +42,51 @@ async def send_lead_magnet(message: types.Message, bot: Bot, lang: str = 'ru'):
         if not lead_magnet:
             return False
         
-        user_id = message.from_user.id
+        user_id = message.from_user.id if message.from_user else 0
         
         # Get greeting text for user's locale
         greeting_text = await LeadMagnet.get_text_for_locale('greeting_text', lang)
         
-        # Send video with greeting caption
-        await bot.send_video(
-            chat_id=user_id,
-            video=lead_magnet.video_file_id,
-            caption=f"🎬 {greeting_text}",
-            parse_mode='HTML'
-        )
+        # Get content type and file_id
+        content_type, file_id = await LeadMagnet.get_current_content()
         
-        print(f"✅ Lead magnet sent to user {user_id}")
+        if not file_id:
+            return False
+        
+        # Send content based on type
+        lead_message = None
+        if content_type == 'video':
+            lead_message = await bot.send_video(
+                chat_id=user_id,
+                video=file_id,
+                caption=f"🎬 {greeting_text}",
+                parse_mode='HTML'
+            )
+        elif content_type == 'photo':
+            lead_message = await bot.send_photo(
+                chat_id=user_id,
+                photo=file_id,
+                caption=f"🖼️ {greeting_text}",
+                parse_mode='HTML'
+            )
+        elif content_type == 'document':
+            lead_message = await bot.send_document(
+                chat_id=user_id,
+                document=file_id,
+                caption=f"📁 {greeting_text}",
+                parse_mode='HTML'
+            )
+        else:
+            return False
+        
+        # Сохраняем message_id лид-магнита для последующего удаления
+        if lead_message:
+            from handlers.shop import add_user_preview_message
+            await add_user_preview_message(user_id, lead_message.message_id)
+
         return True
         
     except Exception as e:
-        print(f"❌ Error sending lead magnet: {e}")
         logging.error(f"Error sending lead magnet: {e}")
         return False
 
@@ -82,7 +109,6 @@ router = Router()
 async def start(message: types.Message, state: FSMContext, bot: Bot):
     # Fixed simple flow: /start -> welcome -> lead video (if enabled) -> main menu
     if message.from_user is None:
-        print("❌ No from_user in start")
         return
 
     # Reset state if any

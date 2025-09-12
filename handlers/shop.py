@@ -39,14 +39,41 @@ promo = lesson.Promocode()
 
 shop_router = Router()
 
+# Хранилище message_id для превью видео по пользователям
+user_preview_messages = {}  # {user_id: [message_id1, message_id2, ...]}
+# Система умной замены превью сообщений инициализирована
+
+
+async def clear_user_preview_messages(user_id: int, chat_id: int):
+    """Удалить все превью сообщения пользователя"""
+    if user_id in user_preview_messages:
+        messages_to_delete = user_preview_messages[user_id].copy()
+        
+        for msg_id in messages_to_delete:
+            try:
+                await bot.delete_message(chat_id=chat_id, message_id=msg_id)
+            except Exception:
+                # Сообщение уже удалено или недоступно - это нормально
+                pass
+        
+        user_preview_messages[user_id] = []
+
+
+async def add_user_preview_message(user_id: int, message_id: int):
+    """Добавить message_id превью в отслеживание"""
+    if user_id not in user_preview_messages:
+        user_preview_messages[user_id] = []
+    
+    user_preview_messages[user_id].append(message_id)
+
 
 @shop_router.callback_query(F.data == 'catalog')
 @handle_errors(main_menu_markup=kb.markup_main_menu(), redirect_on_error=True)
 async def show_catalog(call: types.CallbackQuery, state: FSMContext): 
     """Показать каталог уроков"""
     await call.answer()
-    # Очищаем состояние при возврате к каталогу
-    await safe_state_manager.safe_clear_state(state, call.from_user.id)        
+    await safe_state_manager.safe_clear_state(state, call.from_user.id)
+    await clear_user_preview_messages(call.from_user.id, call.from_user.id)        
 
     @resilient_db_operation(operation_name="get_catalog_lessons", use_cache=True, cache_key="active_lessons")          
     async def get_lessons():            
@@ -78,11 +105,6 @@ async def show_catalog(call: types.CallbackQuery, state: FSMContext):
         if not is_auto_lead_magnet and not is_already_purchased:
             catalog_lessons.append(lesson)
     
-    # Логирование для отладки
-    print(f"📚 CATALOG: Всего активных уроков: {len(lessons)}")
-    print(f"📚 CATALOG: Покупок пользователя: {len(user_purchases)}")
-    print(f"📚 CATALOG: Уроков в каталоге: {len(catalog_lessons)}")
-    
     if not catalog_lessons:
         await global_message_manager.edit_message_safe(
             call.message,
@@ -102,8 +124,8 @@ async def show_catalog(call: types.CallbackQuery, state: FSMContext):
 async def show_my_lessons(call: types.CallbackQuery, state: FSMContext): 
     """Показать купленные уроки пользователя"""
     await call.answer()
-    # Очищаем состояние
-    await safe_state_manager.safe_clear_state(state, call.from_user.id)    
+    await safe_state_manager.safe_clear_state(state, call.from_user.id)
+    await clear_user_preview_messages(call.from_user.id, call.from_user.id)    
     
     # Get user language
     user_id = call.from_user.id
@@ -147,10 +169,11 @@ async def show_my_lessons(call: types.CallbackQuery, state: FSMContext):
         lessons.append(lesson_data)
     
     if not lessons:
-        await global_message_manager.edit_message_safe(call.message,
-            get_text('no_lessons'), 
-            kb.markup_main_menu()
-        ) 
+        if call.message:
+            await global_message_manager.edit_message_safe(call.message,
+                get_text('no_lessons'), 
+                kb.markup_main_menu()
+            ) 
         return
 
     text = get_text('my_lessons_title')    
@@ -166,8 +189,8 @@ async def show_my_lessons(call: types.CallbackQuery, state: FSMContext):
 async def show_profile(call: types.CallbackQuery, state: FSMContext): 
     """Показать профиль пользователя"""
     await call.answer()
-    # Очищаем состояние
-    await safe_state_manager.safe_clear_state(state, call.from_user.id)    
+    await safe_state_manager.safe_clear_state(state, call.from_user.id)
+    await clear_user_preview_messages(call.from_user.id, call.from_user.id)    
 
     @resilient_db_operation(operation_name="get_user_purchases_count", use_cache=True, cache_key=f"user_profile_{call.from_user.id}")  
     async def get_purchases_count(): 
@@ -176,9 +199,7 @@ async def show_profile(call: types.CallbackQuery, state: FSMContext):
     
     lessons_count = await get_purchases_count()
     
-    text = get_text('profile_info', full_name=call.from_user.full_name or "Не указано", lessons_count=lessons_count)
-    print(f"text = {type(text)}")
-    print(f"text = {text}")    
+    text = get_text('profile_info', full_name=call.from_user.full_name or "Не указано", lessons_count=lessons_count)    
     
     await global_message_manager.edit_message_safe(
         call.message,
@@ -192,12 +213,10 @@ async def show_profile(call: types.CallbackQuery, state: FSMContext):
 async def show_lesson_details(call: types.CallbackQuery, state: FSMContext): 
     """Показать детали урока"""
     await call.answer()
-    # Очищаем состояние
-    await safe_state_manager.safe_clear_state(state, call.from_user.id)    
+    await safe_state_manager.safe_clear_state(state, call.from_user.id)
+    await clear_user_preview_messages(call.from_user.id, call.from_user.id)    
 
-    # Проверяем формат callback_data
-    if not call.data or ':' not in call.data: 
-        print(f"❌ Неправильный формат callback_data: {call.data}")        
+    if not call.data or ':' not in call.data:        
         await global_message_manager.edit_message_safe(
             call.message,
             get_text('error_occurred'), 
@@ -211,7 +230,7 @@ async def show_lesson_details(call: types.CallbackQuery, state: FSMContext):
     try:        
         lesson_id = int(lesson_id_str)            
     except ValueError:
-        print(f"❌ Неправильный ID урока: {lesson_id_str}")
+
         await global_message_manager.edit_message_safe(
             call.message,
             get_text('error_occurred'), 
@@ -219,7 +238,7 @@ async def show_lesson_details(call: types.CallbackQuery, state: FSMContext):
         )
         return
     
-    print(f"📚 Получаем данные урока ID: {lesson_id}")    
+    
 
     @resilient_db_operation(operation_name="get_lesson_details", use_cache=True, cache_key=f"lesson_{lesson_id}")  
     async def get_lesson(): 
@@ -228,7 +247,7 @@ async def show_lesson_details(call: types.CallbackQuery, state: FSMContext):
     lesson_data = await get_lesson()    
     
     if not lesson_data:
-        print(f"❌ Урок с ID {lesson_id} не найден")
+
         await global_message_manager.edit_message_safe(
             call.message,
             "❌ Урок не найден",
@@ -236,7 +255,7 @@ async def show_lesson_details(call: types.CallbackQuery, state: FSMContext):
         )
         return
     
-    print(f"✅ Урок найден: {lesson_data.title}")    
+    
     # Увеличиваем счетчик просмотров
     @resilient_db_operation(operation_name="increment_lesson_views")
     async def increment_views(): 
@@ -256,8 +275,7 @@ async def show_lesson_details(call: types.CallbackQuery, state: FSMContext):
     
     # Показываем детали урока
     if user_has_lesson:
-        # Пользователь владеет уроком - показываем контент
-        print(f"📚 Пользователь владеет уроком {lesson_id}") 
+ 
 
         if lesson_data.content_type == 'video' and lesson_data.video_file_id:
             caption = f"📚 <b>{lesson_data.title}</b>\n\n{lesson_data.description or ''}"
@@ -277,12 +295,8 @@ async def show_lesson_details(call: types.CallbackQuery, state: FSMContext):
             )
 
             if video_message:
-                # Отправляем кнопку назад
-                await global_message_manager.send_message_safe(
-                    chat_id=call.from_user.id,
-                    text="👆 Урок выше",
-                    reply_markup=kb.markup_main_menu()
-                )            
+                # Уведомляем пользователя что урок отправлен
+                await call.answer("🎥 Урок отправлен! Вернитесь к меню через навигацию.")            
             else:
                 # Fallback на текстовое сообщение
                 text = f"📚 <b>{lesson_data.title}</b>\n\n{lesson_data.description or ''}\n\n{lesson_data.text_content or ''}" 
@@ -300,8 +314,7 @@ async def show_lesson_details(call: types.CallbackQuery, state: FSMContext):
                 kb.markup_main_menu()
             ) 
     else:        
-        # Пользователь не владеет уроком - показываем детали и возможность покупки
-        print(f"📋 Пользователь не владеет уроком {lesson_id}") 
+ 
         
         # Определяем, бесплатный ли урок
         is_free_lesson = lesson_data.is_free or float(lesson_data.price_usd) == 0
@@ -324,20 +337,83 @@ async def show_lesson_details(call: types.CallbackQuery, state: FSMContext):
         await global_message_manager.edit_message_safe(
             call.message,
             text,
-            kb.markup_lesson_details(lesson_id, user_has_lesson=False, is_free=is_free_lesson)
+            kb.markup_lesson_details(lesson_id, user_has_lesson=False, is_free=is_free_lesson, has_preview=bool(lesson_data.preview_video_file_id))
         )
 
-        # Send preview video if available"   
+        # Превью будет отправлено только при нажатии на кнопку
+
+
+@shop_router.callback_query(lambda F: F.data.startswith('show_preview:'))
+@handle_errors(main_menu_markup=kb.markup_main_menu(), redirect_on_error=True)
+async def show_lesson_preview(call: types.CallbackQuery, state: FSMContext):
+    """Показать превью урока по нажатию кнопки"""
+    await call.answer()
+    
+    # Очищаем предыдущие превью перед показом нового
+    await clear_user_preview_messages(call.from_user.id, call.from_user.id)
+    
+    try:
+        if not call.data or ':' not in call.data:
+            await global_message_manager.edit_message_safe(
+                call.message,
+                "❌ Ошибка: неверный формат данных",
+                kb.markup_main_menu()
+            )
+            return
+            
+        lesson_id_str = call.data.split(':')[1]
+        
+        try:
+            lesson_id = int(lesson_id_str)
+        except ValueError:
+            await global_message_manager.edit_message_safe(
+                call.message,
+                "❌ Ошибка: неверный ID урока",
+                kb.markup_main_menu()
+            )
+            return
+        
+
+        lesson_data = await l.get_lesson(lesson_id)
+        
+        if not lesson_data:
+            if call.message:
+                await global_message_manager.edit_message_safe(
+                    call.message,
+                    "❌ Урок не найден",
+                    kb.markup_main_menu()
+                )
+            return
+        
+
+        
+        # Проверяем наличие превью видео
         if lesson_data.preview_video_file_id:
-            try:        
-                await bot.send_video(
+
+            try:
+
+                preview_message = await bot.send_video(
                     chat_id=call.from_user.id,
                     video=lesson_data.preview_video_file_id,
-                    caption="🎬 Превью урока",
+                    caption=f"🎬 <b>Превью урока:</b> {lesson_data.title}",
                     parse_mode='html'
-                )        
-            except Exception as e:
-                print(f"❌ Ошибка отправки preview_video: {e}")     
+                )
+
+                
+                # Сохраняем message_id превью для последующего удаления
+
+                await add_user_preview_message(call.from_user.id, preview_message.message_id)
+                
+                # Уведомляем пользователя что превью показано
+                await call.answer("🎬 Превью отправлено! Вернитесь к уроку через меню.")
+                    
+            except Exception:
+                await call.answer("❌ Не удалось загрузить превью")
+        else:
+            await call.answer("❌ У этого урока нет превью")
+            
+    except Exception:
+        await call.answer("❌ Произошла ошибка при загрузке превью")     
 
 
 @shop_router.callback_query(lambda F: F.data.startswith('view_lesson:'))
@@ -345,9 +421,8 @@ async def show_lesson_details(call: types.CallbackQuery, state: FSMContext):
 async def view_lesson_content(call: types.CallbackQuery, state: FSMContext):
     """Показать содержимое купленного урока"""
     await call.answer()
-    
-    # Базовое логирование
-    print(f"VIEW_LESSON: User {call.from_user.id} accessing lesson {call.data}")
+    await safe_state_manager.safe_clear_state(state, call.from_user.id)
+    await clear_user_preview_messages(call.from_user.id, call.from_user.id)
     
     try:
         # Проверяем формат callback_data
@@ -371,42 +446,40 @@ async def view_lesson_content(call: types.CallbackQuery, state: FSMContext):
             )
             return
             
-        # Получаем данные урока
         lesson_data = await l.get_lesson(lesson_id)
         
         if not lesson_data:
-            await global_message_manager.edit_message_safe(
-                call.message,
-                f"❌ Урок с ID {lesson_id} не найден",
-                kb.markup_main_menu()
-            )
+            if call.message:
+                await global_message_manager.edit_message_safe(
+                    call.message,
+                    f"❌ Урок с ID {lesson_id} не найден",
+                    kb.markup_main_menu()
+                )
             return
             
-        # Проверяем права доступа
         user_has_lesson = await p.check_user_has_lesson(call.from_user.id, lesson_id)
         
         if not user_has_lesson:
-            await global_message_manager.edit_message_safe(
-                call.message,
-                "❌ У вас нет доступа к этому уроку",
-                kb.markup_main_menu()
-            )
+            if call.message:
+                await global_message_manager.edit_message_safe(
+                    call.message,
+                    "❌ У вас нет доступа к этому уроку",
+                    kb.markup_main_menu()
+                )
             return
             
         # Увеличиваем счетчик просмотров
         await l.increment_views(lesson_id)
         
-        # Показываем содержимое урока
         if lesson_data.content_type == 'video' and lesson_data.video_file_id:
             caption = f"📚 <b>{lesson_data.title}</b>\n\n{lesson_data.description or ''}"
             
-            # Удаляем текущее сообщение
             if call.message:
                 await global_message_manager.delete_message_safe(
                     call.message.chat.id, call.message.message_id
                 )
                 
-            # Отправляем видео
+
             video_message = await global_message_manager.send_media_safe(
                 chat_id=call.from_user.id,
                 media_type='video',
@@ -415,24 +488,43 @@ async def view_lesson_content(call: types.CallbackQuery, state: FSMContext):
             )
             
             if video_message:
-                # Отправляем кнопку назад
-                await global_message_manager.send_message_safe(
+                await add_user_preview_message(call.from_user.id, video_message.message_id)
+                
+                # Отправляем новое меню после видео
+                menu_message = await global_message_manager.send_message_safe(
                     chat_id=call.from_user.id,
-                    text="👆 Урок выше",
+                    text=get_text('welcome'),
                     reply_markup=kb.markup_main_menu()
                 )
+                
+                # Сохраняем сообщение меню для отслеживания
+                if menu_message:
+                    await add_user_preview_message(call.from_user.id, menu_message.message_id)
+                
+                # Уведомляем пользователя что урок отправлен
+                await call.answer("🎥 Урок отправлен! Вернитесь к меню через навигацию.")
             else:
-                # Fallback на текстовое сообщение с улучшенным сообщением
                 fallback_content = lesson_data.text_content or "🎥 Видео временно недоступно. Попробуйте позже."
                 text = f"📚 <b>{lesson_data.title}</b>\n\n{lesson_data.description or ''}\n\n{fallback_content}"
-                await global_message_manager.send_message_safe(
+                fallback_message = await global_message_manager.send_message_safe(
                     chat_id=call.from_user.id,
                     text=text,
                     reply_markup=kb.markup_main_menu()
                 )
                 
+                if fallback_message:
+                    await add_user_preview_message(call.from_user.id, fallback_message.message_id)
+                    
+                # Уведомляем пользователя
+                await call.answer("❌ Не удалось загрузить видео, вернитесь через меню")
+                
         else:
-            # Текстовый урок или урок без видео
+            
+            if call.message:
+                await global_message_manager.delete_message_safe(
+                    call.message.chat.id, call.message.message_id
+                )
+            
             # Улучшенная логика для текстовых уроков
             if lesson_data.content_type == 'text':
                 # Для текстовых уроков приоритет: text_content, затем description как fallback
@@ -449,24 +541,41 @@ async def view_lesson_content(call: types.CallbackQuery, state: FSMContext):
             else:
                 content_text = "📋 Содержимое урока временно недоступно"
             
-            text = f"📚 <b>{lesson_data.title}</b>\n\n{content_text}"
-            await global_message_manager.edit_message_safe(
-                call.message,
-                text,
-                kb.markup_main_menu()
+            # Отправляем текстовое сообщение
+            text = f"📚 <b>{lesson_data.title}</b>\n\n{lesson_data.description or ''}\n\n{content_text}"
+            text_message = await global_message_manager.send_message_safe(
+                chat_id=call.from_user.id,
+                text=text
             )
+            
+            if text_message:
+                await add_user_preview_message(call.from_user.id, text_message.message_id)
+                
+                # Отправляем новое меню после текстового урока
+                menu_message = await global_message_manager.send_message_safe(
+                    chat_id=call.from_user.id,
+                    text=get_text('welcome'),
+                    reply_markup=kb.markup_main_menu()
+                )
+                
+                # Сохраняем сообщение меню для отслеживания
+                if menu_message:
+                    await add_user_preview_message(call.from_user.id, menu_message.message_id)
+                
+                # Уведомляем пользователя что урок отправлен
+                await call.answer("📝 Урок отправлен! Вернитесь к меню через навигацию.")
+            else:
+                await call.answer("❌ Не удалось отправить текстовое сообщение")
         
     except Exception as e:
-        print(f"❌ VIEW_LESSON: Ошибка при просмотре урока: {e}")
-        
         try:
             await global_message_manager.edit_message_safe(
                 call.message,
                 f"❌ Произошла ошибка при загрузке урока",
                 kb.markup_main_menu()
             )
-        except Exception as e2:
-            print(f"VIEW_LESSON: Error sending error message: {e2}")
+        except Exception:
+            pass
 
 
 @shop_router.callback_query(lambda F: F.data.startswith('buy:'))
@@ -476,6 +585,15 @@ async def buy_lesson(call: types.CallbackQuery, state: FSMContext):
     await call.answer()
 
     try:
+        if not call.data:
+            if call.message:
+                await global_message_manager.edit_message_safe(
+                    call.message,
+                    get_text('error_occurred'),
+                    kb.markup_main_menu()
+                )
+            return
+            
         lesson_id = int(call.data.split(':')[1]) 
         lesson_data = await l.get_lesson(lesson_id)
 
@@ -491,11 +609,12 @@ async def buy_lesson(call: types.CallbackQuery, state: FSMContext):
         user_has_lesson = await p.check_user_has_lesson(call.from_user.id, lesson_id)
         
         if user_has_lesson:
-            await global_message_manager.edit_message_safe(
-                call.message,
-                get_text('messages.lesson_already_owned'), 
-                kb.markup_main_menu()
-            )
+            if call.message:
+                await global_message_manager.edit_message_safe(
+                    call.message,
+                    get_text('messages.lesson_already_owned'), 
+                    kb.markup_main_menu()
+                )
             return
         
         # If it's a free lesson, automatically "purchase" it
@@ -512,19 +631,21 @@ async def buy_lesson(call: types.CallbackQuery, state: FSMContext):
                 )            
                 await l.increment_purchases(lesson_id)
 
-                await global_message_manager.edit_message_safe(
-                    call.message,
-                    get_text('messages.lesson_purchased'), 
-                    kb.markup_main_menu()
-                )
+                if call.message:
+                    await global_message_manager.edit_message_safe(
+                        call.message,
+                        get_text('messages.lesson_purchased'), 
+                        kb.markup_main_menu()
+                    )
 
             except Exception as e:
                 logging.error(f"Error creating free purchase: {e}")                
-                await global_message_manager.edit_message_safe(
-                    call.message,
-                    get_text('error_occurred'), 
-                    kb.markup_main_menu()
-                )
+                if call.message:
+                    await global_message_manager.edit_message_safe(
+                        call.message,
+                        get_text('error_occurred'), 
+                        kb.markup_main_menu()
+                    )
             return
     
         # For paid lessons - send invoice for Stars payment (без промокода)
@@ -544,18 +665,20 @@ async def buy_lesson(call: types.CallbackQuery, state: FSMContext):
 
         # Update the message to show payment info
         text = f"💳 <b>Оплата урока</b>\n\n📚 {lesson_data.title}\n💰 Цена: {price_stars} ⭐ Stars\n\nНажмите кнопку оплаты ниже."
-        await global_message_manager.edit_message_safe(
-            call.message,
-            text,
-            kb.markup_lesson_details(lesson_id, user_has_lesson=False)
-        )        
+        if call.message:
+            await global_message_manager.edit_message_safe(
+                call.message,
+                text,
+                kb.markup_lesson_details(lesson_id, user_has_lesson=False)
+            )        
         
     except Exception as e:
         logging.error(f"Error in buy_lesson: {e}")        
-        await global_message_manager.edit_message_safe(
-            call.message,
-            get_text('error_occurred'), kb.markup_main_menu()
-        )    
+        if call.message:
+            await global_message_manager.edit_message_safe(
+                call.message,
+                get_text('error_occurred'), kb.markup_main_menu()
+            )    
 
 
 @shop_router.callback_query(F.data.startswith('pay:'))
@@ -686,7 +809,7 @@ async def enter_promocode(call: types.CallbackQuery, state: FSMContext):
     await call.answer()
 
     try: 
-        lesson_id = int(call.data.split(':')[1])
+        lesson_id = int(call.data.split(':')[1]) if call.data else 0
         await state.update_data(lesson_id=lesson_id)
         await state.set_state(FSMPurchase.promocode)
         # ВАЖНО: ReplyKeyboardMarkup нельзя передать в edit_text — отправляем новое сообщение
@@ -785,8 +908,10 @@ async def play_lead_magnet(call: types.CallbackQuery, state: FSMContext):
     try:
         # Get lead magnet configuration
         lead_magnet = await LeadMagnet.get_lead_magnet()
-        if not lead_magnet or not lead_magnet.video_file_id:
-            await call.answer("❌ Видео недоступно")
+        content_type, file_id = await LeadMagnet.get_current_content()
+        
+        if not lead_magnet or not file_id:
+            await call.answer("❌ Контент недоступен")
             return
         
         # Get user language
@@ -797,13 +922,33 @@ async def play_lead_magnet(call: types.CallbackQuery, state: FSMContext):
         # Get greeting text for user's locale
         greeting_text = await LeadMagnet.get_text_for_locale('greeting_text', lang)
         
-        # Send video with greeting caption
-        await bot.send_video(
-            chat_id=user_id,
-            video=lead_magnet.video_file_id,
-            caption=f"🎬 {greeting_text}",
-            parse_mode='HTML'
-        )
+        # Send content based on type
+        lead_message = None
+        if content_type == 'video':
+            lead_message = await bot.send_video(
+                chat_id=user_id,
+                video=file_id,
+                caption=f"🎬 {greeting_text}",
+                parse_mode='HTML'
+            )
+        elif content_type == 'photo':
+            lead_message = await bot.send_photo(
+                chat_id=user_id,
+                photo=file_id,
+                caption=f"🖼️ {greeting_text}",
+                parse_mode='HTML'
+            )
+        elif content_type == 'document':
+            lead_message = await bot.send_document(
+                chat_id=user_id,
+                document=file_id,
+                caption=f"📁 {greeting_text}",
+                parse_mode='HTML'
+            )
+        
+        # Сохраняем message_id лид-магнита для последующего удаления
+        if lead_message:
+            await add_user_preview_message(user_id, lead_message.message_id)
         
         # Send back to my lessons
         await call.message.edit_text(
@@ -851,7 +996,8 @@ async def get_user_lessons_for_markup(user_id):
 async def back_to_main(call: types.CallbackQuery, state: FSMContext): 
     """Ретурн to main menu"""
     await call.answer()
-    await state.clear()  # Clear any active states
+    await state.clear()
+    await clear_user_preview_messages(call.from_user.id, call.from_user.id)
     
     try:
         text = get_text('welcome')

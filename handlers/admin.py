@@ -657,33 +657,6 @@ async def toggle_lesson_active(call: types.CallbackQuery, state: FSMContext):
         await call.answer('❌ Ошибка обновления статуса')
 
 
-@router.callback_query(F.data.startswith('toggle_free:'))
-async def toggle_lesson_free(call: types.CallbackQuery, state: FSMContext):
-    """Toggle lesson free status"""
-    lesson_id = int(call.data.split(':')[1])
-    
-    lesson = await l.get_lesson(lesson_id)
-    if not lesson:
-        await call.answer('❌ Урок не найден')
-        return
-    
-    new_free_status = not lesson.is_free
-    update_data = {'is_free': new_free_status}
-    
-    # Если делаем бесплатным, ставим цену 0
-    if new_free_status:
-        update_data['price_usd'] = 0
-    
-    success = await l.update_lesson(lesson_id, **update_data)
-    
-    if success:
-        status_text = "бесплатным" if new_free_status else "платным"
-        await call.answer(f"✅ Урок стал {status_text}")
-        await edit_lesson_fields_refresh(call, state, lesson_id)
-    else:
-        await call.answer('❌ Ошибка обновления')
-
-
 # ===== Delete Lesson Handlers =====
 
 @router.callback_query(F.data == 'delete_lesson')
