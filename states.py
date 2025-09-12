@@ -75,5 +75,12 @@ class FSMTranslations(StatesGroup):
     value = State()
 
 
+class FSMLeadMagnet(StatesGroup):
+    """States for lead magnet management"""
+    editing_text = State()
+    editing_video = State()
+    editing_label = State()
+
+
 # class FSMSuperPower(StatesGroup):
     # birthdate = State()

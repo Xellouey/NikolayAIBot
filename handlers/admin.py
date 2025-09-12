@@ -761,4 +761,725 @@ async def cancel_delete_lesson(call: types.CallbackQuery, state: FSMContext):
         )
 
 
+# ===== PROMOCODES HANDLERS =====
+
+@router.callback_query(F.data == 'promocodes')
+async def promocodes_menu(call: types.CallbackQuery, state: FSMContext):
+    """Promocodes management menu with list - ADMIN ONLY"""
+    data_admins = utils.get_admins()
+    
+    if(call.from_user.id not in config.ADMINS and call.from_user.id not in data_admins):
+        await call.answer('⚠️ Ошибка доступа')
+        return
+    
+    # Получаем все промокоды
+    promocodes = await promo.get_all_promocodes()
+    
+    # Формируем текст со списком промокодов
+    text = '🎫 <b>Управление промокодами</b>\n\n'
+    
+    if promocodes:
+        text += '📋 <b>Активные промокоды:</b>\n'
+        text += '━━━━━━━━━━━━━━━━━━━━\n\n'
+        
+        for p in promocodes:
+            # Только активные промокоды
+            if not p.get('is_active', False):
+                continue
+                
+            # Правильно получаем данные о скидке из базы
+            discount_type = p.get('discount_type', 'percentage')
+            discount_value = p.get('discount_value', 0)
+            
+            # Форматируем скидку для отображения
+            if discount_type == 'percentage':
+                # Для процентных скидок конвертируем из доли в проценты
+                discount_percent = float(discount_value) * 100 if float(discount_value) <= 1 else float(discount_value)
+                discount_text = f"{int(discount_percent)}%" if discount_percent.is_integer() else f"{discount_percent:.1f}%"
+            else:  # fixed
+                # Для фиксированных скидок отображаем в долларах
+                discount_amount = float(discount_value)
+                discount_text = f"${int(discount_amount)}" if discount_amount.is_integer() else f"${discount_amount:.2f}"
+            
+            usage_count = p.get('used_count', 0)  # Правильное поле - used_count, а не usage_count
+            usage_limit = p.get('usage_limit')
+            usage_text = f"{usage_count}/{usage_limit if usage_limit else '∞'}"
+            
+            # Проверяем срок действия
+            expires_at = p.get('expires_at')
+            if expires_at:
+                from datetime import datetime
+                if isinstance(expires_at, str):
+                    # Поддержка ISO и 'YYYY-MM-DD HH:MM:SS'
+                    try:
+                        expires_at = datetime.fromisoformat(expires_at)
+                    except ValueError:
+                        # Fallback: заменяем пробел на 'T'
+                        try:
+                            expires_at = datetime.fromisoformat(expires_at.replace(' ', 'T'))
+                        except Exception:
+                            expires_at = None
+                expires_text = f"до {expires_at.strftime('%d.%m.%Y %H:%M')}" if expires_at else 'бессрочно'
+            else:
+                expires_text = "бессрочно"
+            
+            text += f"🎫 <code>{p.get('code', 'N/A')}</code>\n"
+            text += f"   💰 Скидка: {discount_text}\n"
+            text += f"   📊 Использовано: {usage_text}\n"
+            text += f"   ⏰ Срок: {expires_text}\n\n"
+    else:
+        text += '📭 <i>Промокодов пока нет</i>\n\n'
+    
+    text += '━━━━━━━━━━━━━━━━━━━━\n'
+    text += '💡 <i>Используйте кнопки ниже для управления</i>'
+    
+    await call.answer()
+    await call.message.edit_text(
+        text,
+        parse_mode='html',
+        reply_markup=kb.markup_promocodes_management()
+    )
+
+
+@router.callback_query(F.data == 'add_promocode')
+async def add_promocode_start(call: types.CallbackQuery, state: FSMContext):
+    """Start adding new promocode"""
+    data_admins = utils.get_admins()
+    
+    if(call.from_user.id not in config.ADMINS and call.from_user.id not in data_admins):
+        await call.answer('⚠️ Ошибка доступа')
+        return
+    
+    await state.set_state(FSMPromocode.code)
+    await call.answer()
+    await call.message.edit_text('👉 Введите код промокода:')
+
+
+# Удалено - список теперь отображается сразу в меню promocodes
+
+# ===== PROMOCODE DELETE HANDLERS =====
+
+@router.callback_query(F.data == 'delete_promocode_menu')
+async def delete_promocode_menu(call: types.CallbackQuery, state: FSMContext):
+    """Menu for selecting promocode to delete"""
+    data_admins = utils.get_admins()
+    
+    if(call.from_user.id not in config.ADMINS and call.from_user.id not in data_admins):
+        await call.answer('⚠️ Ошибка доступа')
+        return
+    
+    promocodes = await promo.get_all_promocodes(only_active=True)
+    
+    if not promocodes:
+        await call.answer('📋 Активных промокодов нет')
+        # Возвращаемся в обновлённое меню
+        await promocodes_menu(call, state)
+        return
+    
+    await call.answer()
+    await call.message.edit_text(
+        '🗑️ <b>Выберите промокод для удаления:</b>',
+        parse_mode='html',
+        reply_markup=kb.markup_promocodes_delete_list(promocodes, promo.format_discount)
+    )
+
+
+@router.callback_query(F.data.startswith('delete_promocode:'))
+async def delete_promocode_confirm(call: types.CallbackQuery, state: FSMContext):
+    """Ask for deletion confirmation"""
+    data_admins = utils.get_admins()
+    
+    if(call.from_user.id not in config.ADMINS and call.from_user.id not in data_admins):
+        await call.answer('⚠️ Ошибка доступа')
+        return
+    
+    promo_id = int(call.data.split(':')[1])
+    promocode = await promo.get_promocode_by_id(promo_id)
+    
+    if not promocode:
+        await call.answer('❌ Промокод не найден')
+        await delete_promocode_menu(call, state)
+        return
+    
+    # Получаем данные промокода
+    code = promocode.code if hasattr(promocode, 'code') else 'N/A'
+    dtype = promocode.discount_type if hasattr(promocode, 'discount_type') else 'percentage'
+    dval = promocode.discount_value if hasattr(promocode, 'discount_value') else 0
+    discount_text = promo.format_discount(dtype, dval)
+    
+    await call.answer()
+    await call.message.edit_text(
+        f'''❌ <b>Подтверждение удаления</b>
+
+Удалить промокод <code>{code}</code>?
+Скидка: {discount_text}
+
+⚠️ Действие необратимо!''',
+        parse_mode='html',
+        reply_markup=kb.markup_confirm_delete_promocode(promo_id)
+    )
+
+
+@router.callback_query(F.data.startswith('confirm_delete_promocode:'))
+async def confirm_delete_promocode(call: types.CallbackQuery, state: FSMContext):
+    """Actually delete the promocode"""
+    data_admins = utils.get_admins()
+    
+    if(call.from_user.id not in config.ADMINS and call.from_user.id not in data_admins):
+        await call.answer('⚠️ Ошибка доступа')
+        return
+    
+    promo_id = int(call.data.split(':')[1])
+    success = await promo.delete_promocode(promo_id)
+    
+    if success:
+        await call.answer('✅ Промокод успешно удалён')
+    else:
+        await call.answer('❌ Ошибка удаления')
+    
+    # Возвращаемся в обновлённое меню промокодов со списком
+    await promocodes_menu(call, state)
+
+# ===== PROMOCODE CREATE HANDLERS (FSM) =====
+
+@router.message(FSMPromocode.code)
+async def add_promocode_code(message: types.Message, state: FSMContext):
+    """Handle promocode code input"""
+    import re
+    
+    code = message.text.strip().upper()
+    
+    # Валидация кода
+    if not re.match(r'^[A-Z0-9_-]+$', code):
+        await message.answer('❌ Некорректный код. Используйте только латинские буквы, цифры, _ и -')
+        return
+    
+    # Проверяем уникальность среди всех промокодов (включая неактивные)
+    existing = await promo.get_promocode_any(code)
+    if existing:
+        await message.answer('❌ Такой код уже существует. Введите другой:')
+        return
+    
+    await state.update_data(code=code)
+    await message.answer(
+        '🎯 <b>Выберите тип скидки:</b>',
+        parse_mode='html',
+        reply_markup=InlineKeyboardMarkup(inline_keyboard=[
+            [InlineKeyboardButton(text='📊 Процент', callback_data='promo_disc_type:percentage')],
+            [InlineKeyboardButton(text='💵 Фиксированная сумма', callback_data='promo_disc_type:fixed')],
+            [InlineKeyboardButton(text='❌ Отмена', callback_data='cancel_promocode')]
+        ])
+    )
+
+
+@router.callback_query(F.data.startswith('promo_disc_type:'))
+async def add_promocode_type(call: types.CallbackQuery, state: FSMContext):
+    """Handle discount type selection"""
+    dtype = call.data.split(':')[1]
+    await state.update_data(discount_type=dtype)
+    await state.set_state(FSMPromocode.discount_value)
+    
+    if dtype == 'percentage':
+        msg = '👉 Введите процент скидки (1-100):'
+    else:
+        msg = '👉 Введите сумму скидки в USD (например: 5 или 7.5):'
+    
+    await call.answer()
+    await call.message.edit_text(msg)
+
+
+@router.message(FSMPromocode.discount_value)
+async def add_promocode_value(message: types.Message, state: FSMContext):
+    """Handle discount value input"""
+    data = await state.get_data()
+    dtype = data.get('discount_type')
+    
+    # Парсим число (поддерживаем и точку, и запятую)
+    try:
+        value_str = message.text.strip().replace(',', '.')
+        value = float(value_str)
+    except ValueError:
+        await message.answer('❌ Некорректное число. Повторите ввод:')
+        return
+    
+    # Валидация
+    if dtype == 'percentage':
+        if not (1 <= value <= 100):
+            await message.answer('❌ Процент должен быть от 1 до 100. Повторите ввод:')
+            return
+        # Сохраняем как долю (0-1) для совместимости с текущей логикой
+        value = value / 100
+    else:  # fixed
+        if value <= 0:
+            await message.answer('❌ Сумма должна быть больше 0. Повторите ввод:')
+            return
+    
+    await state.update_data(discount_value=value)
+    await state.set_state(FSMPromocode.usage_limit)
+    await message.answer('👉 Введите максимальное количество использований (0 = без лимита):')
+
+
+@router.message(FSMPromocode.usage_limit)
+async def add_promocode_limit(message: types.Message, state: FSMContext):
+    """Handle usage limit input"""
+    try:
+        limit = int(message.text.strip())
+        if limit < 0:
+            raise ValueError
+    except ValueError:
+        await message.answer('❌ Некорректное число. Введите целое число >= 0:')
+        return
+    
+    # 0 = None (без лимита)
+    await state.update_data(usage_limit=limit if limit > 0 else None)
+    await state.set_state(FSMPromocode.expiry_date)
+    from datetime import datetime, timedelta
+    example_text = (datetime.now() + timedelta(days=7)).replace(hour=23, minute=59, second=0, microsecond=0).strftime('%d.%m.%Y %H:%M')
+    await message.answer(
+        '👉 Введите дату окончания\n'
+        'Формат: ДД.ММ.ГГГГ ЧЧ:ММ\n'
+        'Или 0 для бессрочного промокода:\n\n'
+        f'Например: {example_text}',
+        reply_markup=InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text='❌ Отмена', callback_data='cancel_promocode')]])
+    )
+
+
+@router.message(FSMPromocode.expiry_date)
+async def add_promocode_expiry(message: types.Message, state: FSMContext):
+    """Handle expiry date input"""
+    from datetime import datetime
+    
+    text = message.text.strip()
+    
+    if text == '0':
+        expires_at = None
+        expires_text = 'бессрочно'
+    else:
+        try:
+            # Пытаемся распарсить дату (русский формат ДД.ММ.ГГГГ ЧЧ:ММ)
+            expires_at = datetime.strptime(text, '%d.%m.%Y %H:%M')
+            
+            # Проверка: дата не должна быть в прошлом
+            now = datetime.now()
+            if expires_at <= now:
+                await message.answer(
+                    '⚠️ Дата окончания не может быть в прошлом.\n'
+                    'Введите новую дату в формате ДД.ММ.ГГГГ ЧЧ:ММ или 0 для бессрочного:',
+                    reply_markup=InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text='❌ Отмена', callback_data='cancel_promocode')]])
+                )
+                return
+            
+            expires_text = f"до {expires_at.strftime('%d.%m.%Y %H:%M')}"
+        except ValueError:
+            from datetime import timedelta
+            example_text = (datetime.now() + timedelta(days=7)).replace(hour=23, minute=59, second=0, microsecond=0).strftime('%d.%m.%Y %H:%M')
+            await message.answer(
+                '❌ Некорректный формат.\n'
+                'Используйте ДД.ММ.ГГГГ ЧЧ:ММ или 0:',
+                reply_markup=InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text='❌ Отмена', callback_data='cancel_promocode')]])
+            )
+            return
+    
+    await state.update_data(expires_at=expires_at)
+    
+    # Создаём резюме
+    data = await state.get_data()
+    code = data.get('code')
+    dtype = data.get('discount_type')
+    dvalue = data.get('discount_value')
+    limit = data.get('usage_limit')
+    
+    # Форматируем скидку для отображения
+    discount_display = promo.format_discount(dtype, dvalue)
+    dtype_text = 'Процент' if dtype == 'percentage' else 'Фиксированная'
+    limit_text = f'{limit} использований' if limit else 'без лимита'
+    
+    text = f'''🔍 <b>Проверьте данные:</b>
+
+• Код: <code>{code}</code>
+• Тип: {dtype_text}
+• Скидка: {discount_display}
+• Лимит: {limit_text}
+• Действует: {expires_text}'''
+    
+    await message.answer(
+        text,
+        parse_mode='html',
+        reply_markup=InlineKeyboardMarkup(inline_keyboard=[
+            [InlineKeyboardButton(text='✅ Создать', callback_data='confirm_add_promocode')],
+            [InlineKeyboardButton(text='❌ Отмена', callback_data='cancel_promocode')]
+        ])
+    )
+
+
+@router.callback_query(F.data == 'confirm_add_promocode')
+async def confirm_add_promocode(call: types.CallbackQuery, state: FSMContext):
+    """Confirm and create promocode"""
+    data_admins = utils.get_admins()
+    
+    if(call.from_user.id not in config.ADMINS and call.from_user.id not in data_admins):
+        await call.answer('⚠️ Ошибка доступа')
+        return
+    
+    data = await state.get_data()
+    
+    try:
+        # Дополнительная проверка уникальности перед созданием
+        code = data.get('code')
+        if await promo.get_promocode_any(code):
+            await call.answer('❌ Такой код уже существует. Укажите другой код.', show_alert=True)
+            return
+
+        # Создаём промокод
+        await promo.create_promocode(
+            code=code,
+            discount_type=data.get('discount_type'),
+            discount_value=data.get('discount_value'),
+            usage_limit=data.get('usage_limit'),
+            expires_at=data.get('expires_at')
+        )
+        
+        await call.answer('✅ Промокод создан')
+        await state.clear()
+        
+        # Возвращаемся в обновлённое меню промокодов со списком
+        await promocodes_menu(call, state)
+        
+    except Exception as e:
+        logging.error(f"Ошибка создания промокода: {e}")
+        # Дружелюбное сообщение при нарушении уникальности
+        err_text = str(e)
+        if 'UNIQUE constraint failed' in err_text or 'UNIQUE constraint' in err_text:
+            await call.answer('❌ Такой код уже существует. Выберите другой.', show_alert=True)
+        else:
+            await call.answer(f'❌ Ошибка: {err_text[:100]}', show_alert=True)
+
+
+@router.callback_query(F.data == 'cancel_promocode')
+async def cancel_promocode(call: types.CallbackQuery, state: FSMContext):
+    """Cancel promocode creation/editing"""
+    await state.clear()
+    await call.answer('❌ Отменено')
+    
+    # Возвращаемся в обновлённое меню промокодов со списком
+    await promocodes_menu(call, state)
+
+
+# ===== TEXT SETTINGS HANDLERS =====
+
+@router.callback_query(F.data == 'text_settings')
+async def text_settings_menu(call: types.CallbackQuery, state: FSMContext):
+    """Text settings menu - ADMIN ONLY"""
+    data_admins = utils.get_admins()
+    
+    if(call.from_user.id not in config.ADMINS and call.from_user.id not in data_admins):
+        await call.answer('⚠️ Ошибка доступа')
+        return
+    
+    await call.answer()
+    
+    text = '''📝 <b>Настройки текстов</b>
+
+Здесь вы можете изменить любые тексты и кнопки бота.
+
+Выберите, что вы хотите изменить:'''
+    
+    await call.message.edit_text(
+        text,
+        parse_mode='html',
+        reply_markup=kb.markup_text_categories()
+    )
+
+
+@router.callback_query(F.data.startswith('text_category:'))
+async def text_category_selected(call: types.CallbackQuery, state: FSMContext):
+    """Handle text category selection"""
+    data_admins = utils.get_admins()
+    
+    if(call.from_user.id not in config.ADMINS and call.from_user.id not in data_admins):
+        await call.answer('⚠️ Ошибка доступа')
+        return
+    
+    category = call.data.split(':')[1]
+    
+    # Проверяем, что категория разрешена
+    allowed_categories = ['buttons', 'messages']
+    if category not in allowed_categories:
+        await call.answer('⚠️ Категория недоступна')
+        return
+    
+    await state.update_data(text_category=category)
+    
+    category_names = {
+        'buttons': '🔘 Кнопки',
+        'messages': '💬 Сообщения'
+    }
+    
+    category_name = category_names.get(category, category)
+    
+    await call.answer()
+    await call.message.edit_text(
+        f'📝 Категория: <b>{category_name}</b>\n\nВыберите текст для редактирования:',
+        parse_mode='html',
+        reply_markup=kb.markup_text_keys(category)
+    )
+
+
+@router.callback_query(F.data.startswith('text_key:'))
+async def text_key_selected(call: types.CallbackQuery, state: FSMContext):
+    """Handle text key selection for editing"""
+    data_admins = utils.get_admins()
+    
+    if(call.from_user.id not in config.ADMINS and call.from_user.id not in data_admins):
+        await call.answer('⚠️ Ошибка доступа')
+        return
+    
+    parts = call.data.split(':')
+    category = parts[1]
+    key = parts[2]
+    
+    # Проверяем, что категория разрешена
+    allowed_categories = ['buttons', 'messages']
+    if category not in allowed_categories:
+        await call.answer('⚠️ Категория недоступна')
+        return
+    
+    # Получаем текущее значение
+    texts = utils.get_interface_texts()
+    current_value = texts.get(category, {}).get(key, '')
+    
+    await state.update_data(text_category=category, text_key=key)
+    await state.set_state(FSMSettings.text_value)
+    
+    await call.answer()
+    await call.message.edit_text(
+        f'''📝 <b>Редактирование текста</b>
+
+Категория: <b>{category}</b>
+Ключ: <b>{key}</b>
+
+Текущее значение:
+<code>{current_value}</code>
+
+👉 Отправьте новый текст для этого ключа:''',
+        parse_mode='html'
+    )
+
+
+@router.message(FSMSettings.text_value)
+async def save_text_value(message: types.Message, state: FSMContext):
+    """Save new text value with validation and logging"""
+    data = await state.get_data()
+    category = data.get('text_category')
+    key = data.get('text_key')
+    new_value = message.text.strip()
+    
+    # Проверяем, что категория разрешена
+    allowed_categories = ['buttons', 'messages']
+    if category not in allowed_categories:
+        await message.answer('❌ Категория недоступна для редактирования')
+        await state.clear()
+        return
+    
+    # Валидация длины текста
+    if len(new_value) > 4096:
+        await message.answer(
+            '❌ <b>Ошибка!</b>\n\nТекст слишком длинный (максимум 4096 символов).\nПопробуйте сократить текст.',
+            parse_mode='html'
+        )
+        return
+    
+    # Валидация для кнопок (максимум 64 символа)
+    if category == 'buttons' and len(new_value) > 64:
+        await message.answer(
+            '❌ <b>Ошибка!</b>\n\nТекст кнопки слишком длинный (максимум 64 символа).\nПопробуйте сократить текст.',
+            parse_mode='html'
+        )
+        return
+    
+    # Проверка на опасные HTML теги
+    dangerous_tags = ['<script', '<iframe', '<object', '<embed', '<form']
+    if any(tag in new_value.lower() for tag in dangerous_tags):
+        await message.answer(
+            '❌ <b>Ошибка!</b>\n\nТекст содержит недопустимые HTML теги.\nРазрешены только: b, i, u, s, code, pre, a',
+            parse_mode='html'
+        )
+        return
+    
+    # Получаем старое значение для логирования
+    texts = utils.get_interface_texts()
+    old_value = texts.get(category, {}).get(key, '')
+    
+    # Сохраняем новое значение
+    if category not in texts:
+        texts[category] = {}
+    texts[category][key] = new_value
+    
+    # Сохраняем в файл
+    utils.save_interface_texts(texts)
+    
+    # Логирование изменения
+    logging.info(f"Text edited by admin {message.from_user.id} ({message.from_user.full_name}): "
+                 f"category='{category}', key='{key}', "
+                 f"old='{old_value[:50]}...', new='{new_value[:50]}...'")
+    
+    # Сохраняем лог в файл для аудита
+    try:
+        import json
+        from datetime import datetime
+        audit_log = {
+            'timestamp': datetime.now().isoformat(),
+            'admin_id': message.from_user.id,
+            'admin_name': message.from_user.full_name,
+            'category': category,
+            'key': key,
+            'old_value': old_value,
+            'new_value': new_value
+        }
+        
+        # Добавляем в файл аудита
+        audit_file = 'json/text_edits_audit.json'
+        try:
+            with open(audit_file, 'r', encoding='utf-8') as f:
+                audit_data = json.load(f)
+        except (FileNotFoundError, json.JSONDecodeError):
+            audit_data = []
+        
+        audit_data.append(audit_log)
+        
+        # Сохраняем только последние 1000 записей
+        if len(audit_data) > 1000:
+            audit_data = audit_data[-1000:]
+        
+        with open(audit_file, 'w', encoding='utf-8') as f:
+            json.dump(audit_data, f, ensure_ascii=False, indent=2)
+    except Exception as e:
+        logging.error(f"Error saving audit log: {e}")
+    
+    await state.clear()
+    await message.answer(
+        f'''✅ <b>Текст успешно изменен!</b>
+
+Категория: <b>{category}</b>
+Ключ: <b>{key}</b>
+Новое значение: <code>{new_value}</code>''',
+        parse_mode='html',
+        reply_markup=kb.markup_text_categories()
+    )
+
+
+# ===== CURRENCY RATE HANDLERS =====
+
+@router.callback_query(F.data == 'currency_rate')
+async def currency_rate_menu(call: types.CallbackQuery, state: FSMContext):
+    """Currency rate settings - ADMIN ONLY"""
+    data_admins = utils.get_admins()
+    
+    if(call.from_user.id not in config.ADMINS and call.from_user.id not in data_admins):
+        await call.answer('⚠️ Ошибка доступа')
+        return
+    
+    # Получаем текущий курс
+    current_rate = await s.get_usd_to_stars_rate()
+    
+    await state.set_state(FSMSettings.currency_rate)
+    await call.answer()
+    await call.message.edit_text(
+        f'''💱 <b>Настройка курса валют</b>
+
+Текущий курс: 1 USD = {current_rate} ⭐ Stars
+
+👉 Введите новый курс (количество Stars за 1 USD):''',
+        parse_mode='html'
+    )
+
+
+@router.message(FSMSettings.currency_rate)
+async def save_currency_rate(message: types.Message, state: FSMContext):
+    """Save new currency rate"""
+    try:
+        new_rate = float(message.text.strip())
+        if new_rate <= 0:
+            await message.answer('❌ Курс должен быть положительным числом. Попробуйте еще раз:')
+            return
+        
+        # Сохраняем новый курс
+        await s.set_usd_to_stars_rate(new_rate)
+        
+        await state.clear()
+        await message.answer(
+            f'''✅ <b>Курс валют обновлен!</b>
+
+Новый курс: 1 USD = {new_rate} ⭐ Stars
+
+Все цены в боте будут автоматически пересчитаны по новому курсу.''',
+            parse_mode='html',
+            reply_markup=InlineKeyboardMarkup(inline_keyboard=[
+                [InlineKeyboardButton(text='↪️ Назад', callback_data='settings')]
+            ])
+        )
+    except ValueError:
+        await message.answer('❌ Неверный формат. Введите число (например: 50 или 75.5):')
+
+
+# ===== STATISTICS HANDLERS =====
+
+@router.callback_query(F.data == 'statistics')
+async def statistics_menu(call: types.CallbackQuery, state: FSMContext):
+    """Statistics menu - ADMIN ONLY"""
+    data_admins = utils.get_admins()
+    
+    if(call.from_user.id not in config.ADMINS and call.from_user.id not in data_admins):
+        await call.answer('⚠️ Ошибка доступа')
+        return
+    
+    # Собираем статистику
+    from database import user as user_module
+    from datetime import datetime, timedelta
+    
+    # Пользователи
+    total_users = await u.get_total_users()
+    today_users = await u.get_users_count_since(datetime.now().replace(hour=0, minute=0, second=0, microsecond=0))
+    week_users = await u.get_users_count_since(datetime.now() - timedelta(days=7))
+    
+    # Продажи
+    total_sales = await p.get_sales_stats()
+    today_sales = await p.get_sales_stats_period(1)
+    week_sales = await p.get_sales_stats_period(7)
+    
+    # Уроки
+    total_lessons = len(await l.get_all_lessons(active_only=False))
+    active_lessons = len(await l.get_all_lessons(active_only=True))
+    
+    # Промокоды
+    total_promocodes = len(await promo.get_all_promocodes())
+    
+    text = f'''📊 <b>Статистика бота</b>
+
+👥 <b>Пользователи:</b>
+├ Всего: {total_users}
+├ За сегодня: +{today_users}
+└ За неделю: +{week_users}
+
+💰 <b>Продажи:</b>
+├ Всего: {total_sales['count']} шт (${total_sales['total']:.2f})
+├ За сегодня: {today_sales['count']} шт (${today_sales['total']:.2f})
+└ За неделю: {week_sales['count']} шт (${week_sales['total']:.2f})
+
+📚 <b>Уроки:</b>
+├ Всего: {total_lessons}
+└ Активных: {active_lessons}
+
+🎫 <b>Промокоды:</b> {total_promocodes}'''
+    
+    await call.answer()
+    await call.message.edit_text(
+        text,
+        parse_mode='html',
+        reply_markup=InlineKeyboardMarkup(inline_keyboard=[
+            [InlineKeyboardButton(text='↪️ Назад', callback_data='backAdmin')]
+        ])
+    )
+
+
 # End of file

@@ -7,7 +7,7 @@ from aiogram.fsm.storage.memory import MemoryStorage
 from aiogram.client.default import DefaultBotProperties
 from aiogram.enums import ParseMode
 
-from handlers import client, admin, mail, shop, payment, support, cancel_handler
+from handlers import client, admin, mail, shop, payment, support, cancel_handler, admin_lead_magnet
 from database import sql
 from database.mail import Mail
 from mail import mailing
@@ -118,7 +118,15 @@ async def mail_scheduler():
                     from_id = mail_data['from_id']
                     keyboard_str = mail_data.get('keyboard')
                     keyboard = json.loads(keyboard_str) if keyboard_str else None
+
+                    # message_text может быть как строкой (JSON), так и уже распарсенным dict
                     message_text = mail_data.get('message_text')
+                    if isinstance(message_text, str):
+                        try:
+                            message_text = json.loads(message_text)
+                        except json.JSONDecodeError:
+                            # Оставляем как есть (старый формат — чистый текст)
+                            pass
                     
                     logging.info(f"🚀 Запуск рассылки ID {mail_id}")
                     await mailing(message_id, from_id, keyboard, message_info=message_text)
@@ -182,6 +190,7 @@ async def main():
         dp.include_router(support.router)          # Обработчики поддержки
         dp.include_router(mail.router)             # Обработчики рассылки ПЕРЕД admin!
         dp.include_router(client.router)           # ✅ Обработчики клиента - онбординг /start
+        dp.include_router(admin_lead_magnet.router)  # Обработчики лид-магнита
         dp.include_router(admin.router)            # Обработчики админа
         dp.include_router(shop.shop_router)        # ✅ Обработчики магазина ПОСЛЕДНИМИ - только callback'и
         print("✅ Все обработчики загружены успешно")

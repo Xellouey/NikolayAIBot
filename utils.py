@@ -11,10 +11,32 @@ import logging
         
         
 def get_admins(filename="json/admins.json"):
+    """Возвращает список ID администраторов из JSON.
+    Гарантирует возврат списка при любых ошибках/нестандартных форматах.
+    Допустимые форматы файла:
+      - [123, 456]
+      - {"admins": [123, 456]}
+      - {"ids": [123, 456]}
+      - {"123": true, "456": true}
+    """
     try:
         with open(filename, 'r', encoding='utf-8') as f:
-            admins = json.load(f)
-        return admins
+            data = json.load(f)
+        # Нормализация в список
+        if isinstance(data, list):
+            return data
+        if isinstance(data, dict):
+            # Наиболее вероятные ключи-обертки
+            for key in ("admins", "ids", "list"):
+                if key in data and isinstance(data[key], list):
+                    return data[key]
+            # Случай словаря вида {"123": true}
+            try:
+                return [int(k) for k in data.keys()]
+            except Exception:
+                return []
+        # Любой другой тип — возвращаем пустой список
+        return []
     except FileNotFoundError:
         return []
     except json.JSONDecodeError:
@@ -51,6 +73,10 @@ async def calculate_stars_price(usd_price):
         usd_price = Decimal(usd_price)
     elif isinstance(usd_price, float):
         usd_price = Decimal(str(usd_price))
+    
+    # Ensure exchange_rate is a number
+    if isinstance(exchange_rate, str):
+        exchange_rate = int(float(exchange_rate))
     
     stars_price = int(usd_price * exchange_rate)
     return max(1, stars_price)  # Minimum 1 star
@@ -120,7 +146,7 @@ def validate_html_text(text: str, max_length: int = 4096) -> bool:
     # Remove content between tags for tag balance check
     # Simple stack-based tag balancer
     tag_stack = []
-    tag_pattern = re.compile(r'<(/?)([a-zA-Z]+)(?:\s+href="([^"]*)")?\s*/?>', re.IGNORECASE)
+    tag_pattern = re.compile(r'<(/?)([a-zA-Z]+)(?:\s+href=\"([^\"]*)\")?\s*/?>', re.IGNORECASE)
     
     for match in tag_pattern.finditer(text):
         tag_name = match.group(2).lower()
@@ -149,3 +175,28 @@ def validate_html_text(text: str, max_length: int = 4096) -> bool:
         return False
     
     return True
+
+
+def get_interface_texts(filename="json/interface_texts.json"):
+    """Get interface texts from JSON file"""
+    try:
+        with open(filename, 'r', encoding='utf-8') as f:
+            texts = json.load(f)
+        return texts
+    except FileNotFoundError:
+        logging.error(f"Interface texts file not found: {filename}")
+        return {}
+    except json.JSONDecodeError as e:
+        logging.error(f"Error decoding interface texts JSON: {e}")
+        return {}
+
+
+def save_interface_texts(texts, filename="json/interface_texts.json"):
+    """Save interface texts to JSON file"""
+    try:
+        with open(filename, 'w', encoding='utf-8') as f:
+            json.dump(texts, f, indent=4, ensure_ascii=False)
+        return True
+    except Exception as e:
+        logging.error(f"Error saving interface texts: {e}")
+        return False

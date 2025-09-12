@@ -116,3 +116,21 @@ class User(peewee.Model):
             print(f"✅ Language updated for user {user_id} to {lang}")
         except Exception as e:
             print(f"❌ Error updating language for user {user_id}: {e}")
+    
+    async def get_total_users(self):
+        """Get total number of users"""
+        try:
+            count = User.select().count()
+            return count
+        except Exception as e:
+            logging.error(f"Error getting total users: {e}")
+            return 0
+    
+    async def get_users_count_since(self, since_date):
+        """Get number of users registered since date"""
+        try:
+            count = User.select().where(User.date_registered >= since_date).count()
+            return count
+        except Exception as e:
+            logging.error(f"Error getting users since {since_date}: {e}")
+            return 0

@@ -258,9 +258,15 @@ async def takeMailConfirm(message: types.Message, state: FSMContext):
 
     # Сохраняем в базе с медиа и текстом
     message_info = {"text": text, "media": media, "media_type": media_type}
-    await m.create_mail(date_mail, message_id, from_id, keyboard, message_text=message_info)
+
+    # Определяем, мгновенная ли рассылка (прошедшее время)
+    is_immediate = date_mail < dt.now()
+    status = 'sent' if is_immediate else 'wait'
+
+    # Создаём запись сразу с корректным статусом, чтобы планировщик не подхватил мгновенную рассылку повторно
+    mail_id = await m.create_mail(date_mail, message_id, from_id, keyboard, message_text=message_info, status=status)
     
-    if date_mail < dt.now():
+    if is_immediate:
         await mailing(message_id, from_id, keyboard, message_info=message_info)
         await message.answer('✅ Рассылка отправлена мгновенно', reply_markup=kb.markup_remove())
     else:

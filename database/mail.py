@@ -34,7 +34,7 @@ class Mail(peewee.Model):
         # Log mail creation details
         logging.info(f"Creating mail: date={date_mail.strftime('%d.%m.%Y %H:%M:%S')}, user={from_id}, has_keyboard={keyboard is not None}")
         
-        mail = await orm.create(Mail, date_mail=date_mail, message_id=message_id, from_id=from_id, keyboard=keyboard_str, message_text=message_text_str)
+        mail = await orm.create(Mail, date_mail=date_mail, message_id=message_id, from_id=from_id, keyboard=keyboard_str, message_text=message_text_str, **kwargs)
         pk = mail.id
         
         logging.info(f"Mail created successfully with ID {pk}")

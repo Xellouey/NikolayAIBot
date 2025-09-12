@@ -11,6 +11,8 @@ import keyboards as kb
 u = user.User()
 bot = aiogram.Bot(config.TOKEN)
 
+# Служебный текст для пустых рассылок (отправляется от имени бота)
+FALLBACK_SERVICE_TEXT = '⠀'  # U+2800 Braille blank символ
 
 logging.basicConfig(
     level=logging.ERROR,
@@ -62,14 +64,9 @@ async def mailing(message_id, from_id, keyboard, message_info=None):
                 elif media_type == 'video':
                     await bot.send_video(user_id, media, caption=text, reply_markup=markup)
             else:
-                # Отправляем только текст
-                if text:
-                    await bot.send_message(user_id, text, reply_markup=markup)
-                else:
-                    # Старый способ - пересылка
-                    forwarded_msg = await bot.forward_message(user_id, from_id, message_id)
-                    if markup:
-                        await bot.edit_message_reply_markup(user_id, forwarded_msg.message_id, reply_markup=markup)
+                # Отправляем только текст; если текста нет — подставляем служебный символ, чтобы сообщение было "от бота"
+                text_to_send = text if text else FALLBACK_SERVICE_TEXT
+                await bot.send_message(user_id, text_to_send, reply_markup=markup)
             i += 1
         except Exception as e:
             logging.error(f"Error sending to {user_id}: {e}")

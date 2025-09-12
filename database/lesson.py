@@ -1,8 +1,9 @@
 import config
 import peewee
-from datetime import datetime
-from peewee import DoesNotExist
+import logging
+from datetime import datetime, timedelta
 from .core import con, orm
+from decimal import Decimal
 
 
 class Lesson(peewee.Model):
@@ -91,6 +92,17 @@ class Lesson(peewee.Model):
             return True
         except Exception as e:
             print(f"❌ Ошибка увеличения просмотров: {e}")
+            return False
+    
+    async def increment_purchases(self, lesson_id):
+        """Increment lesson purchases count"""
+        try:
+            Lesson.update(
+                purchases_count=Lesson.purchases_count + 1
+            ).where(Lesson.id == lesson_id).execute()
+            return True
+        except Exception as e:
+            print(f"❌ Ошибка увеличения покупок: {e}")
             return False
     
     async def create_lesson(self, title, description, price_usd, 
@@ -259,11 +271,49 @@ class Purchase(peewee.Model):
             'count': total_count,
             'total_usd': total_usd
         }
+    
+    async def get_sales_stats(self):
+        """Get total sales statistics"""
+        try:
+            purchases = await orm.execute(Purchase.select().dicts())
+            purchases_list = list(purchases)
+            
+            total_count = len(purchases_list)
+            total_usd = sum(float(p['price_paid_usd']) for p in purchases_list)
+            
+            return {
+                'count': total_count,
+                'total': total_usd
+            }
+        except Exception as e:
+            logging.error(f"Error getting sales stats: {e}")
+            return {'count': 0, 'total': 0}
+    
+    async def get_sales_stats_period(self, days):
+        """Get sales statistics for specific period in days"""
+        from datetime import timedelta
+        try:
+            date_from = datetime.now() - timedelta(days=days)
+            query = Purchase.select().where(Purchase.purchase_date >= date_from)
+            purchases = await orm.execute(query.dicts())
+            purchases_list = list(purchases)
+            
+            total_count = len(purchases_list)
+            total_usd = sum(float(p['price_paid_usd']) for p in purchases_list)
+            
+            return {
+                'count': total_count,
+                'total': total_usd
+            }
+        except Exception as e:
+            logging.error(f"Error getting sales stats for {days} days: {e}")
+            return {'count': 0, 'total': 0}
 
     async def get_usd_to_stars_rate(self):
         """Get USD to Stars exchange rate"""
         rate = await self.get_setting('usd_to_stars_rate', '200')
-        return int(rate or 200)
+        # Convert string to float first, then to int to handle decimal values like '77.0'
+        return int(float(rate or 200))
 
     async def set_usd_to_stars_rate(self, rate) :
         """Set USD to Stars exchange rate"""
@@ -333,7 +383,8 @@ class SystemSettings(peewee.Model):
     async def get_usd_to_stars_rate(self):
         """Get USD to Stars exchange rate"""
         rate = await self.get_setting('usd_to_stars_rate', '200')
-        return int(rate or 200)
+        # Convert string to float first, then to int to handle decimal values like '77.0'
+        return int(float(rate or 200))
     
     async def set_usd_to_stars_rate(self, rate):
         """Set USD to Stars exchange rate"""
@@ -344,36 +395,69 @@ class Promocode(peewee.Model):
     """Model for promocodes"""
 
     code = peewee.CharField(max_length=50, unique=True)
-    discount_percent = peewee.IntegerField()  # Скидка в процентах
-    discount_amount_usd = peewee.DecimalField(max_digits=10, decimal_places=2, null=True)  # Фиксированная скидка в USD
-    usage_limit = peewee.IntegerField(null=True)  # Лимит использований (None = без лимита)
-    used_count = peewee.IntegerField(default=0)  # Сколько раз использован
-    is_active = peewee.BooleanField(default=True)  # Активен ли промокод
-    expires_at = peewee.DateTimeField(null=True)  # Дата истечения (None = не истекает)
+    # Новые поля
+    discount_type = peewee.CharField(max_length=20, default='percentage')  # 'percentage' or 'fixed'
+    discount_value = peewee.DecimalField(max_digits=10, decimal_places=2, default=0)  # Either percent or fixed USD amount
+    # Старые поля для совместимости
+    discount_percent = peewee.IntegerField(default=0)  # Legacy field
+    discount_amount_usd = peewee.DecimalField(max_digits=10, decimal_places=2, null=True)  # Legacy field
+    used_count = peewee.IntegerField(default=0)  # Legacy field
+    
+    usage_limit = peewee.IntegerField(null=True)  # Usage limit (None = unlimited)
+    usage_count = peewee.IntegerField(default=0)  # Times used
+    is_active = peewee.BooleanField(default=True)  # Is active
+    expires_at = peewee.DateTimeField(null=True)  # Expiry date (None = never expires)
     created_at = peewee.DateTimeField(default=datetime.now)
 
     class Meta:
         database = con
 
-    async def create_promocode(self, code, discount_percent=0, discount_amount_usd=None, **kwargs):  # Added leading slash
+    async def create_promocode(self, code, discount_type='percentage', discount_value=0, **kwargs):  # Fixed parameters
         """Create promocode"""
+        
+        # Подготавливаем данные для создания промокода
+        promocode_data = {
+            'code': code.upper(),
+            'discount_type': discount_type,
+            'discount_value': discount_value,
+            **kwargs
+        }
+        
+        # Заполняем старые поля для совместимости с существующей структурой БД
+        if discount_type == 'percentage':
+            # Для процентных скидок заполняем discount_percent
+            percent_value = float(discount_value) * 100 if float(discount_value) <= 1 else float(discount_value)
+            promocode_data['discount_percent'] = int(percent_value)
+            promocode_data['discount_amount_usd'] = None
+        else:  # fixed
+            # Для фиксированных скидок заполняем discount_amount_usd
+            promocode_data['discount_percent'] = 0  # Заполняем 0 для NOT NULL поля
+            promocode_data['discount_amount_usd'] = discount_value
+        
+        # Заполняем used_count для совместимости
+        promocode_data['used_count'] = 0
 
-        promocode = await orm.create(Promocode,
-                                   code=code.upper(),
-                                   discount_percent=discount_percent,
-                                   discount_amount_usd=discount_amount_usd,
-                                   **kwargs)
+        promocode = await orm.create(Promocode, **promocode_data)
         return promocode
 
     async def get_promocode(self, code) :  # Added leading slash
-        """Get promocode by code"""
+        """Get ACTIVE promocode by code (for applying)"""
         try:
             query = Promocode.select().where(
                 (Promocode.code == code.upper()) & (Promocode.is_active == True)
             )
             promocode = query.dicts().first()
             return promocode
-        except Exception: 
+        except Exception:
+            return None
+
+    async def get_promocode_any(self, code):
+        """Get promocode by code regardless of is_active (for uniqueness checks)"""
+        try:
+            query = Promocode.select().where(Promocode.code == code.upper())
+            promocode = query.dicts().first()
+            return promocode
+        except Exception:
             return None
 
     async def validate_promocode(self, code) :
@@ -383,41 +467,128 @@ class Promocode(peewee.Model):
             return None, "Промокод не найден"
 
         # Check usage limit
-        if promocode.usage_limit and promocode.used_count >= promocode.usage_limit:
+        if promocode.get('usage_limit') and promocode.get('usage_count', 0) >= promocode['usage_limit']:
             return None, "Промокод исчерпан"
 
         # Check expiry
-        if promocode.expires_at and datetime.now() > promocode.expires_at:
-            return None, "Промокод истек"
+        if promocode.get('expires_at'):
+            from datetime import datetime
+            expires_at = promocode['expires_at']
+            if isinstance(expires_at, str):
+                # Пытаемся распарсить несколько форматов времени
+                parsed = None
+                try:
+                    parsed = datetime.fromisoformat(expires_at)  # поддерживает 'YYYY-MM-DD HH:MM[:SS]'
+                except Exception:
+                    try:
+                        parsed = datetime.strptime(expires_at, '%Y-%m-%d %H:%M:%S')
+                    except Exception:
+                        try:
+                            parsed = datetime.strptime(expires_at, '%d.%m.%Y %H:%M')
+                        except Exception:
+                            parsed = None
+                expires_at = parsed or None
+            if expires_at and datetime.now() > expires_at:
+                return None, "Промокод истек"
 
         return promocode, "OK"
 
     async def use_promocode(self, code):  # Removed a leading slash as it's a method
         """Mark promocode as used"""
         await orm.execute(
-            Promocode.update(used_count=Promocode.used_count + 1).where(Promocode.code == code.upper())
+            Promocode.update(usage_count=Promocode.usage_count + 1).where(Promocode.code == code.upper())
         )
 
     async def calculate_discount(self, promocode, original_price_usd):  # Removed a leading slash as it's a method
         """Calculate discounted price"""
-
-
-        if promocode.discount_amount_usd:
-            # Fixed discount
-            discount = float(promocode.discount_amount_usd) / 100
-
+        
+        # Handle both dict and object access
+        if isinstance(promocode, dict):
+            discount_type = promocode.get('discount_type', 'percentage')
+            discount_value = float(promocode.get('discount_value', 0))
         else:
-            # Percentage discount
-            discount = float(original_price_usd) * promocode.discount_percent / 100 / 100
+            discount_type = getattr(promocode, 'discount_type', 'percentage')
+            discount_value = float(getattr(promocode, 'discount_value', 0))
+        
+        if discount_type == 'fixed':
+            # Fixed discount in USD
+            discount = discount_value
+        else:  # percentage
+            # Percentage discount - исправляем логику для правильного расчета
+            # Если значение <= 1, считаем что это доля (0.20 = 20%)
+            if discount_value <= 1:
+                discount = float(original_price_usd) * discount_value
+            else:
+                # Если > 1, считаем что это уже проценты (20 = 20%)
+                discount = float(original_price_usd) * discount_value / 100
 
         final_price = max(0, float(original_price_usd) - discount)
         return final_price, discount
 
-    async def get_all_promocodes(self):  # Removed a leading slash as it's a method
+    async def get_all_promocodes(self, only_active=False):  # Removed a leading slash as it's a method
         """Get all promocodes for admin"""
-
-        promocodes = await orm.execute(Promocode.select().dicts()())
-        return list(promocodes)
+        try:
+            # Используем синхронный метод list() для получения всех записей
+            query = Promocode.select()
+            if only_active:
+                query = query.where(Promocode.is_active == True)
+            promocodes = list(query.dicts())
+            return promocodes
+        except Exception as e:
+            print(f"❌ Ошибка получения списка промокодов: {e}")
+            return []
+    
+    async def get_promocode_by_id(self, promo_id):
+        """Get promocode by ID"""
+        try:
+            promocode = Promocode.get_by_id(promo_id)
+            return promocode
+        except:
+            return None
+    
+    async def delete_promocode(self, promo_id):
+        """Physically delete promocode (hard delete)"""
+        try:
+            rows = Promocode.delete().where(Promocode.id == promo_id).execute()
+            if rows > 0:
+                print(f"✅ Промокод ID {promo_id} удалён (hard delete)")
+                return True
+            else:
+                print(f"⚠️ Промокод ID {promo_id} не найден для удаления")
+                return False
+        except Exception as e:
+            print(f"❌ Ошибка удаления промокода {promo_id}: {e}")
+            return False
+    
+    async def purge_inactive_promocodes(self):
+        """Delete all previously soft-deleted promocodes (is_active = False)"""
+        try:
+            rows = Promocode.delete().where(Promocode.is_active == False).execute()
+            print(f"🧹 Удалено неактивных промокодов: {rows}")
+            return rows
+        except Exception as e:
+            print(f"❌ Ошибка при очистке неактивных промокодов: {e}")
+            return 0
+    
+    def format_discount(self, discount_type, discount_value):
+        """Format discount for display"""
+        if discount_type in ('percent', 'percentage', '%'):
+            # Если значение <= 1, считаем что это доля (0.15 = 15%)
+            # Если > 1, считаем что это уже проценты (15 = 15%)
+            val = float(discount_value)
+            if val <= 1:
+                val = val * 100
+            
+            if val.is_integer():
+                return f"{int(val)}%"
+            else:
+                return f"{val:.1f}%"
+        else:  # fixed
+            val = float(discount_value)
+            if val.is_integer():
+                return f"${int(val)}"
+            else:
+                return f"${val:.2f}"
 
 class Translations(peewee.Model):
     """Model for text translations (simplified)"""

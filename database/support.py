@@ -32,9 +32,11 @@ class SupportTicket(peewee.Model):
     async def get_ticket(self, ticket_id):
         """Get ticket by ID"""
         try:
-            ticket = await orm.get(SupportTicket, SupportTicket.id == ticket_id)
+            # Передаем уже отфильтрованный запрос в AsyncManager.get()
+            query = SupportTicket.select().where(SupportTicket.id == ticket_id)
+            ticket = await orm.get(query)
             return ticket
-        except:
+        except Exception:
             return None
     
     async def get_user_tickets(self, user_id):
@@ -84,8 +86,9 @@ class SupportTicket(peewee.Model):
         if 'status' in kwargs and kwargs['status'] == 'closed':
             kwargs['closed_at'] = datetime.now()
             
+        # ВАЖНО: используем распаковку **kwargs для корректного формирования UPDATE
         await orm.execute(
-            SupportTicket.update(kwargs)
+            SupportTicket.update(**kwargs)
             .where(SupportTicket.id == ticket_id)
         )
     

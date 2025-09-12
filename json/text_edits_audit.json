@@ -1,0 +1,119 @@
+[
+  {
+    "timestamp": "2025-09-10T18:50:27.126552",
+    "admin_id": 897676474,
+    "admin_name": "Дмитрий Митюк",
+    "category": "messages",
+    "key": "welcome",
+    "old_value": "👋 Добро пожаловать!\n\nВыберите действие:",
+    "new_value": "Категория: messages\nКлюч: welcome"
+  },
+  {
+    "timestamp": "2025-09-10T18:50:38.175365",
+    "admin_id": 897676474,
+    "admin_name": "Дмитрий Митюк",
+    "category": "messages",
+    "key": "start_message",
+    "old_value": "👋 Добро пожаловать!\n\nВыберите действие:",
+    "new_value": "Категория: messages\nКлюч: start_message"
+  },
+  {
+    "timestamp": "2025-09-10T19:07:19.267924",
+    "admin_id": 897676474,
+    "admin_name": "Дмитрий Митюк",
+    "category": "buttons",
+    "key": "my_lessons",
+    "old_value": "📚 Мои уроки",
+    "new_value": "📚 Мои уроки тест"
+  },
+  {
+    "timestamp": "2025-09-10T19:07:46.953858",
+    "admin_id": 897676474,
+    "admin_name": "Дмитрий Митюк",
+    "category": "messages",
+    "key": "welcome",
+    "old_value": "Категория: messages\nКлюч: welcome",
+    "new_value": "Приветственное сообщение тест"
+  },
+  {
+    "timestamp": "2025-09-10T19:07:58.955909",
+    "admin_id": 897676474,
+    "admin_name": "Дмитрий Митюк",
+    "category": "messages",
+    "key": "start_message",
+    "old_value": "Категория: messages\nКлюч: start_message",
+    "new_value": "Стартовое сообщение тест"
+  },
+  {
+    "timestamp": "2025-09-10T19:11:54.275207",
+    "admin_id": 897676474,
+    "admin_name": "Дмитрий Митюк",
+    "category": "buttons",
+    "key": "my_lessons",
+    "old_value": "📚 Мои уроки тест",
+    "new_value": "📚 Мои уроки"
+  },
+  {
+    "timestamp": "2025-09-10T21:07:01.688885",
+    "admin_id": 897676474,
+    "admin_name": "Дмитрий Митюк",
+    "category": "messages",
+    "key": "welcome",
+    "old_value": "Приветственное сообщение тест",
+    "new_value": "Главное меню:"
+  },
+  {
+    "timestamp": "2025-09-11T22:09:00.077780",
+    "admin_id": 494482943,
+    "admin_name": "Егор",
+    "category": "buttons",
+    "key": "support",
+    "old_value": "📞 Поддержка",
+    "new_value": "📞 Suporte"
+  },
+  {
+    "timestamp": "2025-09-11T22:09:50.918340",
+    "admin_id": 494482943,
+    "admin_name": "Егор",
+    "category": "buttons",
+    "key": "support",
+    "old_value": "📞 Suporte",
+    "new_value": "📞 Suporte"
+  },
+  {
+    "timestamp": "2025-09-11T22:14:15.705282",
+    "admin_id": 494482943,
+    "admin_name": "Егор",
+    "category": "messages",
+    "key": "support_welcome",
+    "old_value": "📞 <b>Центр поддержки</b>\n\nЗдесь вы можете создать тикет с вопросом или проблемой.\nНаши специалисты ответят вам в ближайшее время!\n\nВыберите действие:",
+    "new_value": "📞 Centro de Suporte\n\nAqui você pode abrir um ticket com sua dúvida ou problema.\nNossos especialistas vão te responder o quanto antes!\n\nEscolha o que deseja fazer:\n\n👉 Envie um novo texto para esta chave:"
+  },
+  {
+    "timestamp": "2025-09-12T14:51:54.337092",
+    "admin_id": 494482943,
+    "admin_name": "Егор",
+    "category": "buttons",
+    "key": "support",
+    "old_value": "📞 Suporte",
+    "new_value": "📞 Suporte"
+  },
+  {
+    "timestamp": "2025-09-12T14:53:56.935248",
+    "admin_id": 494482943,
+    "admin_name": "Егор",
+    "category": "messages",
+    "key": "support_welcome",
+    "old_value": "📞 Centro de Suporte\n\nAqui você pode abrir um ticket com sua dúvida ou problema.\nNossos especialistas vão te responder o quanto antes!\n\nEscolha o que deseja fazer:\n\n👉 Envie um novo texto para esta chave:",
+    "new_value": "📞 Centro de Suporte\n\nAqui você pode abrir um ticket com sua dúvida ou problema.\nNossos especialistas vão te responder o quanto antes!\n\nEscolha o que deseja fazer:\n\n👉 Envie um novo texto para esta chave:"
+  },
+  {
+    "timestamp": "2025-09-12T14:59:57.157369",
+    "admin_id": 494482943,
+    "admin_name": "Егор",
+    "category": "buttons",
+    "key": "my_lessons",
+    "old_value": "📚 Мои уроки",
+    "new_value": "My lessons"
+  }
+]

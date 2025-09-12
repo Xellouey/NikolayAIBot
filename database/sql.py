@@ -3,7 +3,7 @@ import peewee
 from peewee import *
 from .core import con
 from .user import User
-from .lesson import Lesson
+from .lesson import Lesson, Promocode, SystemSettings
 from datetime import datetime
 
 class Support(peewee.Model):
@@ -31,14 +31,43 @@ class Mail(peewee.Model):
         database = con
 
 def configure_database():
-    """Настройка базы данных"""
-    con.create_tables([User, Lesson, Support, Mail], safe=True)
-    
-    # Миграция для добавления message_text в Mail
+    """Настройка базы данных и безопасные миграции"""
+    # Создание основных таблиц, если их нет
+    con.create_tables([User, Lesson, Support, Mail, Promocode, SystemSettings], safe=True)
+
+    # Миграция для добавления message_text в Mail (идемпотентно)
     try:
         con.execute_sql('ALTER TABLE mail ADD COLUMN message_text TEXT')
         print("Колонка message_text добавлена в таблицу Mail")
-    except:
-        pass  # Колонка уже существует или ошибка - безопасно
-        
-    print("База данных настроена")
+    except Exception:
+        pass  # Колонка уже существует или другая безопасная ошибка
+
+    # Безопасные миграции для таблицы promocode
+    # Добавляем недостающие колонки, если их нет
+    try:
+        con.execute_sql("ALTER TABLE promocode ADD COLUMN discount_type VARCHAR(20) DEFAULT 'percentage'")
+        print("Колонка discount_type добавлена в таблицу promocode")
+    except Exception:
+        pass
+
+    try:
+        con.execute_sql("ALTER TABLE promocode ADD COLUMN discount_value DECIMAL(10,2) DEFAULT 0")
+        print("Колонка discount_value добавлена в таблицу promocode")
+    except Exception:
+        pass
+
+    # Переезд used_count -> usage_count (если требуется)
+    try:
+        con.execute_sql("ALTER TABLE promocode ADD COLUMN usage_count INTEGER DEFAULT 0")
+        print("Колонка usage_count добавлена в таблицу promocode")
+    except Exception:
+        pass
+
+    try:
+        # Скопируем данные, если старое поле существовало
+        con.execute_sql("UPDATE promocode SET usage_count = used_count WHERE usage_count = 0")
+        print("Данные usage_count скопированы из used_count")
+    except Exception:
+        pass
+
+    print("База данных настроена и миграции применены (если требовалось)")

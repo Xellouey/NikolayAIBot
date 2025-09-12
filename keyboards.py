@@ -44,6 +44,19 @@ def markup_remove():
     return markup_remove
 
 
+def markup_example_cancel(example_text: str):
+    """Reply keyboard with example text button and cancel.
+    Sends the example text as a message when pressed.
+    """
+    items = [
+        [KeyboardButton(text=example_text)],
+        [KeyboardButton(text='❌ Отмена')]
+    ]
+    return ReplyKeyboardMarkup(keyboard=items, resize_keyboard=True)
+
+
+
+
 def markup_confirm():
     items = [
         [KeyboardButton(text='✅ Да')],
@@ -102,17 +115,19 @@ def markup_main_menu(lang='ru'):
 
 
 async def markup_catalog(lessons):
-    """Catalog keyboard with lessons"""
+    """Catalog keyboard with lessons (paid and free lessons created by admin)"""
     items = []
     
     for lesson in lessons:
-        # Show price in USD and Stars
+        # Определяем цену и отображение
         price_usd = float(lesson['price_usd'])
-        price_stars = await utils.calculate_stars_price(price_usd)
         
-        if lesson['is_free']:
-            button_text = f"🎁 {lesson['title']} (FREE)"
+        if lesson.get('is_free', False) or price_usd == 0:
+            # Бесплатный урок
+            button_text = f"🎁 {lesson['title']} (БЕСПЛАТНО)"
         else:
+            # Платный урок
+            price_stars = await utils.calculate_stars_price(price_usd)
             button_text = f"📚 {lesson['title']} (${price_usd:.2f})"
             
         items.append([InlineKeyboardButton(
@@ -130,20 +145,29 @@ async def markup_catalog(lessons):
     return InlineKeyboardMarkup(inline_keyboard=items)
 
 
-def markup_lesson_details(lesson_id, user_has_lesson=False, show_promocode=True, lang='ru'):
+def markup_lesson_details(lesson_id, user_has_lesson=False, show_promocode=True, is_free=False, lang='ru'):
     """Lesson details keyboard"""
     from localization import get_text
     items = []
     if not user_has_lesson:
-        items.append([InlineKeyboardButton(
-            text=get_text('btn_buy', lang), 
-            callback_data=f"buy:{lesson_id}"
-        )])
-        if show_promocode:
+        if is_free:
+            # Бесплатный урок - кнопка "Получить бесплатно"
             items.append([InlineKeyboardButton(
-                text='🎟️ Промокод', 
-                callback_data=f"promocode:{lesson_id}"
+                text="🎁 Получить бесплатно", 
+                callback_data=f"buy:{lesson_id}"
             )])
+        else:
+            # Платный урок - обычная кнопка "Купить"
+            items.append([InlineKeyboardButton(
+                text=get_text('btn_buy', lang), 
+                callback_data=f"buy:{lesson_id}"
+            )])
+            # Промокод только для платных уроков
+            if show_promocode:
+                items.append([InlineKeyboardButton(
+                    text=get_text('buttons.enter_promocode', lang), 
+                    callback_data=f"promocode:{lesson_id}"
+                )])
     items.append([InlineKeyboardButton(
         text=get_text('btn_back', lang), 
         callback_data='catalog'
@@ -155,10 +179,19 @@ def markup_my_lessons(lessons):
     """My lessons keyboard"""
     items = []
     for lesson in lessons:
+        # Check if this is the lead magnet
+        if lesson.get('is_lead'):
+            callback = 'lead_magnet:play'
+            icon = '🌟'  # Star icon for lead magnet
+        else:
+            callback = f"view_lesson:{lesson['id']}"
+            icon = '📚'  # Book icon for regular lessons
+        
         items.append([InlineKeyboardButton(
-            text=f"📚 {lesson['title']}", 
-            callback_data=f"view_lesson:{lesson['id']}"
+            text=f"{icon} {lesson['title']}", 
+            callback_data=callback
         )])
+    
     from localization import get_text
     items.append([InlineKeyboardButton(
         text=get_text('btn_back', 'ru'), 
@@ -202,6 +235,7 @@ def markup_admin_shop(user_id):
     items = [
         [InlineKeyboardButton(text='📤 Рассылка', callback_data='mail')], 
         [InlineKeyboardButton(text='📚 Управление уроками', callback_data='lessons_mgmt')],
+        [InlineKeyboardButton(text='🎬 Лид-магнит', callback_data='lead_magnet')],
         [InlineKeyboardButton(text='🎫 Поддержка', callback_data='admin_support')],
         [InlineKeyboardButton(text='📊 Статистика', callback_data='statistics')],
         [
@@ -232,7 +266,6 @@ def markup_admin_settings():
     items = [
         [InlineKeyboardButton(text='💱 Курс валют', callback_data='currency_rate')],
         [InlineKeyboardButton(text='📝 Настройки текстов', callback_data='text_settings')],
-        [InlineKeyboardButton(text='🌍 Переводы', callback_data='translations')],
         [InlineKeyboardButton(text='↪️ Назад', callback_data='backAdmin')]
     ]
     return InlineKeyboardMarkup(inline_keyboard=items)
@@ -250,7 +283,7 @@ def markup_lesson_edit_list(lessons):
         )])
     items.append([InlineKeyboardButton(
         text='↪️ Назад', 
-        callback_data='edit_lesson'
+        callback_data='lessons_mgmt'
     )])
     return InlineKeyboardMarkup(inline_keyboard=items)
 
@@ -316,8 +349,35 @@ def markup_promocodes_management():
     """Promocodes management keyboard - ALWAYS IN RUSSIAN"""
     items = [
         [InlineKeyboardButton(text='➕ Добавить промокод', callback_data='add_promocode')],
-        [InlineKeyboardButton(text='📋 Список промокодов', callback_data='list_promocodes')],
+        [InlineKeyboardButton(text='🗑️ Удалить промокод', callback_data='delete_promocode_menu')],
         [InlineKeyboardButton(text='↪️ Назад', callback_data='backAdmin')]
+    ]
+    return InlineKeyboardMarkup(inline_keyboard=items)
+
+
+def markup_promocodes_delete_list(promocodes, format_fn=None):
+    """List of promocodes for deletion - ALWAYS IN RUSSIAN"""
+    items = []
+    for p in promocodes:
+        code = p.get('code', 'N/A') if isinstance(p, dict) else getattr(p, 'code', 'N/A')
+        dtype = p.get('discount_type', 'percentage') if isinstance(p, dict) else getattr(p, 'discount_type', 'percentage')
+        dval = p.get('discount_value', 0) if isinstance(p, dict) else getattr(p, 'discount_value', 0)
+        display = format_fn(dtype, dval) if format_fn else f"{dtype}:{dval}"
+        pid = p.get('id') if isinstance(p, dict) else getattr(p, 'id', None)
+        if pid is None:
+            continue
+        items.append([InlineKeyboardButton(
+            text=f"{code} — {display}",
+            callback_data=f"delete_promocode:{pid}"
+        )])
+    items.append([InlineKeyboardButton(text='↪️ Назад', callback_data='promocodes')])
+    return InlineKeyboardMarkup(inline_keyboard=items)
+
+
+def markup_confirm_delete_promocode(promo_id):
+    items = [
+        [InlineKeyboardButton(text='✅ Удалить', callback_data=f'confirm_delete_promocode:{promo_id}'),
+         InlineKeyboardButton(text='❌ Отмена', callback_data='delete_promocode_menu')]
     ]
     return InlineKeyboardMarkup(inline_keyboard=items)
 
@@ -362,6 +422,10 @@ def markup_ticket_details(ticket_id, is_closed=False):
         items.append([InlineKeyboardButton(
             text="💬 Посмотреть переписку",
             callback_data=f"ticket_conversation:{ticket_id}"
+        )])
+        items.append([InlineKeyboardButton(
+            text="✍️ Ответить",
+            callback_data=f"user_respond_ticket:{ticket_id}"
         )])
     items.append([InlineKeyboardButton(
         text='⬅️ Назад',
@@ -429,12 +493,10 @@ def markup_admin_ticket_actions(ticket_id, is_closed=False):
 
 def markup_text_categories():
     """Markup for text categories selection"""
-    # не отображать без прямого указания, это тестовый функционал не для продакшена
+    # Только пользовательские тексты - админка на русском и не нуждается в настройке
     items = [
         [InlineKeyboardButton(text="🔘 Кнопки", callback_data='text_category:buttons')],
         [InlineKeyboardButton(text="💬 Сообщения", callback_data='text_category:messages')],
-        [InlineKeyboardButton(text="👨‍💼 Админ", callback_data='text_category:admin')],
-        [InlineKeyboardButton(text="📧 Почта", callback_data='text_category:mail')],
         [InlineKeyboardButton(text="↩️ Назад к настройкам", callback_data='settings')]
     ]
     return InlineKeyboardMarkup(inline_keyboard=items)

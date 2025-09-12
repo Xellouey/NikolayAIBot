@@ -8,6 +8,7 @@ from aiogram import Bot, types, Router, F
 from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
 from aiogram.filters import Command
 from aiogram.fsm.context import FSMContext
+from aiogram.exceptions import TelegramBadRequest
 from states import FSMSupport
 from database.support import SupportTicket, TicketMessage
 from database.user import User
@@ -33,30 +34,28 @@ async def cancel_support_inline(call: types.CallbackQuery, state: FSMContext):
     """Cancel support operation via inline button"""
     current_state = await state.get_state()
     
-    if current_state and 'FSMSupport' in str(current_state):
+    # Clear state if exists
+    if current_state:
         await state.clear()
-        await call.answer("❌ Отменено")
-        
-        is_admin = call.from_user.id in config.ADMINS or call.from_user.id in utils.get_admins()
-        
-        if is_admin:
-            # Create new callback data for admin_support
-            new_call = types.CallbackQuery(
-                id=call.id,
-                from_user=call.from_user, 
-                chat_instance=call.chat_instance,
-                data="admin_support",
-                message=call.message
-            )
-            await admin_support_dashboard(new_call, state)
-        else:
-            # Show support menu
-            await call.message.edit_text(
-                get_text('messages.support_welcome'),
-                reply_markup=kb.markup_support_menu()
-            )
+    
+    await call.answer("❌ Отменено")
+    
+    # Check if user is admin
+    is_admin = call.from_user.id in config.ADMINS or call.from_user.id in utils.get_admins()
+    
+    # Determine if we're in admin responding state
+    is_admin_responding = current_state and 'admin_responding' in str(current_state)
+    
+    if is_admin and is_admin_responding:
+        # Admin was responding to ticket, show admin support dashboard
+        text, markup = await build_admin_support_dashboard()
+        await call.message.edit_text(text, reply_markup=markup)
     else:
-        await call.answer()
+        # Regular user or admin in user context - show main menu
+        await call.message.edit_text(
+            get_text('welcome'),
+            reply_markup=kb.markup_main_menu()
+        )
 
 
 @router.callback_query(F.data == 'support')
@@ -66,7 +65,7 @@ async def support_menu(call: types.CallbackQuery, state: FSMContext):
     await call.answer()
     
     await call.message.edit_text(
-        get_text('messages.support_welcome'),
+        get_text('support_welcome'),
         reply_markup=kb.markup_support_menu()
     )
 
@@ -83,7 +82,7 @@ async def create_ticket_start(call: types.CallbackQuery, state: FSMContext):
     ])
     
     await call.message.edit_text(
-        get_text('messages.ticket_subject_prompt'),
+        get_text('ticket_subject_prompt'),
         reply_markup=cancel_keyboard
     )
 
@@ -103,7 +102,7 @@ async def process_ticket_subject(message: types.Message, state: FSMContext):
     await state.set_state(FSMSupport.waiting_description)
     
     await message.answer(
-        get_text('messages.ticket_description_prompt'),
+        get_text('ticket_description_prompt'),
         reply_markup=kb.markup_cancel()
     )
 
@@ -167,26 +166,32 @@ async def process_ticket_description(message: types.Message, state: FSMContext):
         
         # Send confirmation to user
         await message.answer(
-            get_text('messages.ticket_created', 
+            get_text('ticket_created', 
                           ticket_id=ticket.id, 
                           subject=subject),
             reply_markup=kb.markup_remove()
         )
         
-        # Send notification to admins
-        await notify_admins_new_ticket(ticket, message.from_user)
+        # Send notification to admins (не критично для пользователя)
+        try:
+            await notify_admins_new_ticket(ticket, message.from_user)
+        except Exception as notify_err:
+            logging.exception(f"Notify admins failed: {notify_err}")
         
-        # Show support menu
-        await message.answer(
-            get_text('messages.support_welcome'),
-            reply_markup=kb.markup_support_menu()
-        )
+        # Show support menu (не критично)
+        try:
+            await message.answer(
+                get_text('support_welcome'),
+                reply_markup=kb.markup_support_menu()
+            )
+        except Exception as menu_err:
+            logging.exception(f"Show support menu failed: {menu_err}")
         
     except Exception as e:
-        logging.error(f"Error creating ticket: {e}")
+        logging.exception(f"Error creating ticket: {e}")
         await state.clear()
         await message.answer(
-            get_text('messages.error_occurred'),
+            get_text('error_occurred'),
             reply_markup=kb.markup_support_menu()
         )
 
@@ -200,26 +205,43 @@ async def show_user_tickets(call: types.CallbackQuery, state: FSMContext):
         tickets = await support_ticket.get_user_tickets(call.from_user.id)
         
         if not tickets:
-            await call.message.edit_text(
-                get_text('messages.no_tickets'),
-                reply_markup=kb.markup_support_menu()
-            )
+            try:
+                await call.message.edit_text(
+                    get_text('no_tickets'),
+                    reply_markup=kb.markup_support_menu()
+                )
+            except TelegramBadRequest as e:
+                if 'message is not modified' in str(e).lower():
+                    await call.answer("✅ Уже показано сообщение о том, что тикетов нет")
+                    return
+                raise
             return
         
-        await call.message.edit_text(
-            f"📋 **Ваши тикеты** ({len(tickets)})\n\nВыберите тикет для просмотра:",
-            reply_markup=kb.markup_user_tickets(tickets)
-        )
+        text = f"📋 <b>Ваши тикеты</b> ({len(tickets)})\n\nВыберите тикет для просмотра:"
+        try:
+            await call.message.edit_text(
+                text,
+                reply_markup=kb.markup_user_tickets(tickets)
+            )
+        except TelegramBadRequest as e:
+            if 'message is not modified' in str(e).lower():
+                await call.answer("✅ Уже показан список ваших тикетов")
+                return
+            raise
         
     except Exception as e:
-        logging.error(f"Error in show_user_tickets: {e}")
-        await call.message.edit_text(
-            get_text('messages.error_occurred'),
-            reply_markup=kb.markup_support_menu()
-        )
+        logging.exception(f"Error in show_user_tickets: {e}")
+        try:
+            await call.message.edit_text(
+                get_text('error_occurred'),
+                reply_markup=kb.markup_support_menu()
+            )
+        except TelegramBadRequest:
+            # Если даже сообщение об ошибке не изменяет текст
+            await call.answer("❌ Ошибка отображения. Попробуйте позже.")
 
 
-@router.callback_query(lambda F: F.data.startswith('view_ticket:'))
+@router.callback_query(F.data.startswith('view_ticket:'))
 async def view_ticket_details(call: types.CallbackQuery, state: FSMContext):
     """View ticket details"""
     await call.answer()
@@ -228,7 +250,9 @@ async def view_ticket_details(call: types.CallbackQuery, state: FSMContext):
         ticket_id = int(call.data.split(':')[1])
         ticket = await support_ticket.get_ticket(ticket_id)
         
-        if not ticket or ticket.user_id != call.from_user.id:
+        # Разрешаем доступ владельцу или админу; сравнение по int на всякий случай
+        is_admin = call.from_user.id in config.ADMINS or call.from_user.id in utils.get_admins()
+        if not ticket or (not is_admin and int(ticket.user_id) != int(call.from_user.id)):
             await call.message.edit_text(
                 "❌ Тикет не найден или доступ запрещен.",
                 reply_markup=kb.markup_support_menu()
@@ -237,20 +261,27 @@ async def view_ticket_details(call: types.CallbackQuery, state: FSMContext):
         
         # Get status text
         status_text = {
-            'open': get_text('messages.ticket_status_open'),
-            'in_progress': get_text('messages.ticket_status_in_progress'),
-            'closed': get_text('messages.ticket_status_closed')
+            'open': get_text('ticket_status_open'),
+            'in_progress': get_text('ticket_status_in_progress'),
+            'closed': get_text('ticket_status_closed')
         }.get(ticket.status, ticket.status)
+        
+        # Determine if admin has responded at least once
+        msgs = await ticket_message.get_ticket_messages(ticket_id)
+        admin_replied = any(m.get('sender_type') == 'admin' for m in msgs)
+        reply_status = '✅ Есть ответ администратора' if admin_replied else '⌛ Ответа администратора пока нет'
         
         # Format created_at
         created_at = ticket.created_at.strftime("%d.%m.%Y %H:%M")
         
-        text = get_text('messages.ticket_details',
-                             ticket_id=ticket.id,
-                             subject=ticket.subject,
-                             status=status_text,
-                             created_at=created_at,
-                             description=ticket.description)
+        details_text = get_text('ticket_details',
+                                ticket_id=ticket.id,
+                                subject=ticket.subject,
+                                status=status_text,
+                                created_at=created_at,
+                                description=ticket.description)
+        
+        text = details_text + f"\n\n{reply_status}"
         
         await call.message.edit_text(
             text,
@@ -258,14 +289,17 @@ async def view_ticket_details(call: types.CallbackQuery, state: FSMContext):
         )
         
     except Exception as e:
-        logging.error(f"Error in view_ticket_details: {e}")
-        await call.message.edit_text(
-            get_text('messages.error_occurred'),
-            reply_markup=kb.markup_support_menu()
-        )
+        logging.exception(f"Error in view_ticket_details: {e}")
+        try:
+            await call.message.edit_text(
+                get_text('error_occurred'),
+                reply_markup=kb.markup_support_menu()
+            )
+        except Exception:
+            await call.answer("❌ Ошибка отображения. Попробуйте позже.")
 
 
-@router.callback_query(lambda F: F.data.startswith('ticket_conversation:'))
+@router.callback_query(F.data.startswith('ticket_conversation:'))
 async def show_ticket_conversation(call: types.CallbackQuery, state: FSMContext):
     """Show ticket conversation"""
     await call.answer()
@@ -279,30 +313,29 @@ async def show_ticket_conversation(call: types.CallbackQuery, state: FSMContext)
         if not ticket or (not is_admin and ticket.user_id != call.from_user.id):
             await call.message.edit_text(
                 "❌ Тикет не найден или доступ запрещен.",
-                reply_markup=kb.markup_support_menu() if not is_admin else kb.markup_admin_support_dashboard()
+                reply_markup=kb.markup_support_menu()
             )
             return
         
         # Get conversation messages
         messages = await ticket_message.get_ticket_messages(ticket_id)
         
-        conversation_text = f"💬 **Переписка по тикету #{ticket_id}**\n"
+        conversation_text = f"💬 <b>Переписка по тикету #{ticket_id}</b>\n"
         conversation_text += f"📝 Тема: {ticket.subject}\n\n"
         
         for msg in messages:
             timestamp = msg['created_at'].strftime("%d.%m %H:%M")
-            sender_type = "👤 **Администратор**" if msg['sender_type'] == 'admin' else "👤 **Вы**"
-            
-            if is_admin and msg['sender_type'] == 'user':
-                sender_type = "👤 **Пользователь**"
+            if msg['sender_type'] == 'admin':
+                sender_type = "👤 <b>Администратор</b>"
+            else:
+                sender_type = "👤 <b>Вы</b>"
             
             conversation_text += f"{sender_type} ({timestamp}):\n{msg['message_text']}\n\n"
         
-        # Send back button logic
-        back_callback = 'admin_support' if is_admin else 'my_tickets'
+        # Always back to user tickets per requirements
         back_button = [InlineKeyboardButton(
             text="◀️ Назад",
-            callback_data=back_callback
+            callback_data='my_tickets'
         )]
         
         await call.message.edit_text(
@@ -312,14 +345,31 @@ async def show_ticket_conversation(call: types.CallbackQuery, state: FSMContext)
         
     except Exception as e:
         logging.error(f"Error in show_ticket_conversation: {e}")
-        back_markup = kb.markup_support_menu()
-        if call.from_user.id in config.ADMINS or call.from_user.id in utils.get_admins():
-            back_markup = kb.markup_admin_support_dashboard()
-        
         await call.message.edit_text(
-            get_text('messages.error_occurred'),
-            reply_markup=back_markup
+            get_text('error_occurred'),
+            reply_markup=kb.markup_support_menu()
         )
+
+
+# ===== HELPER FUNCTIONS =====
+
+async def build_admin_support_dashboard():
+    """Build admin support dashboard text and markup"""
+    try:
+        # Get ticket counts
+        counts = await support_ticket.get_tickets_count_by_status()
+        
+        text = get_text('admin.support_dashboard',
+                             total=counts['total'],
+                             open=counts['open'],
+                             in_progress=counts['in_progress'],
+                             closed=counts['closed'])
+        
+        markup = kb.markup_admin_support_dashboard()
+        return text, markup
+    except Exception as e:
+        logging.error(f"Error in build_admin_support_dashboard: {e}")
+        return get_text('error_occurred'), kb.markup_admin_support_dashboard()
 
 
 # ===== ADMIN SUPPORT HANDLERS =====
@@ -337,20 +387,10 @@ async def admin_support_dashboard(call: types.CallbackQuery, state: FSMContext):
     await call.answer()
     
     try:
-        # Get ticket counts
-        counts = await support_ticket.get_tickets_count_by_status()
-        
-        text = get_text('admin.messages.support_dashboard',
-                             total=counts['total'],
-                             open=counts['open'],
-                             in_progress=counts['in_progress'],
-                             closed=counts['closed'])
+        text, markup = await build_admin_support_dashboard()
         
         try:
-            await call.message.edit_text(
-                text,
-                reply_markup=kb.markup_admin_support_dashboard()
-            )
+            await call.message.edit_text(text, reply_markup=markup)
         except Exception as edit_error:
             # If edit fails (message not modified), just answer the callback
             if "message is not modified" in str(edit_error):
@@ -362,7 +402,7 @@ async def admin_support_dashboard(call: types.CallbackQuery, state: FSMContext):
         logging.error(f"Error in admin_support_dashboard: {e}")
         try:
             await call.message.edit_text(
-                get_text('messages.error_occurred'),
+                get_text('error_occurred'),
                 reply_markup=kb.markup_admin_shop(call.from_user.id)
             )
         except:
@@ -370,7 +410,7 @@ async def admin_support_dashboard(call: types.CallbackQuery, state: FSMContext):
             await call.answer("❌ Произошла ошибка")
 
 
-@router.callback_query(lambda F: F.data.startswith('tickets_'))
+@router.callback_query(F.data.startswith('tickets_'))
 async def show_tickets_by_status(call: types.CallbackQuery, state: FSMContext):
     """Show tickets filtered by status"""
     data_admins = utils.get_admins()
@@ -382,7 +422,8 @@ async def show_tickets_by_status(call: types.CallbackQuery, state: FSMContext):
     await call.answer()
     
     try:
-        status = call.data.split('_')[1]  # tickets_open -> open
+        # tickets_open -> open, tickets_in_progress -> in_progress
+        status = call.data.split('_', 1)[1]
         tickets = await support_ticket.get_all_tickets(status=status)
         
         # Get status name for display
@@ -427,7 +468,7 @@ async def show_tickets_by_status(call: types.CallbackQuery, state: FSMContext):
         logging.error(f"Error in show_tickets_by_status: {e}")
         try:
             await call.message.edit_text(
-                get_text('messages.error_occurred'),
+                get_text('error_occurred'),
                 reply_markup=kb.markup_admin_support_dashboard()
             )
         except:
@@ -435,7 +476,7 @@ async def show_tickets_by_status(call: types.CallbackQuery, state: FSMContext):
             await call.answer("❌ Произошла ошибка")
 
 
-@router.callback_query(lambda F: F.data.startswith('admin_ticket:'))
+@router.callback_query(F.data.startswith('admin_ticket:'))
 async def admin_view_ticket(call: types.CallbackQuery, state: FSMContext):
     """Admin view ticket details"""
     data_admins = utils.get_admins()
@@ -472,7 +513,7 @@ async def admin_view_ticket(call: types.CallbackQuery, state: FSMContext):
             'closed': '🔴 Закрыт'
         }.get(ticket.status, ticket.status)
         
-        text = get_text('admin.messages.ticket_details_admin',
+        text = get_text('admin.ticket_details_admin',
                              ticket_id=ticket.id,
                              user_name=user_name,
                              user_id=ticket.user_id,
@@ -490,12 +531,12 @@ async def admin_view_ticket(call: types.CallbackQuery, state: FSMContext):
     except Exception as e:
         logging.error(f"Error in admin_view_ticket: {e}")
         await call.message.edit_text(
-            get_text('messages.error_occurred'),
+            get_text('error_occurred'),
             reply_markup=kb.markup_admin_support_dashboard()
         )
 
 
-@router.callback_query(lambda F: F.data.startswith('respond_ticket:'))
+@router.callback_query(F.data.startswith('respond_ticket:'))
 async def admin_respond_ticket(call: types.CallbackQuery, state: FSMContext):
     """Start admin response to ticket"""
     data_admins = utils.get_admins()
@@ -517,14 +558,14 @@ async def admin_respond_ticket(call: types.CallbackQuery, state: FSMContext):
         ])
         
         await call.message.edit_text(
-            get_text('admin.messages.admin_response_prompt'),
+            get_text('admin.admin_response_prompt'),
             reply_markup=cancel_keyboard
         )
         
     except Exception as e:
         logging.error(f"Error in admin_respond_ticket: {e}")
         await call.message.edit_text(
-            get_text('messages.error_occurred'),
+            get_text('error_occurred'),
             reply_markup=kb.markup_admin_support_dashboard()
         )
 
@@ -590,29 +631,24 @@ async def process_admin_response(message: types.Message, state: FSMContext):
         await notify_user_response(ticket, message.from_user)
         
         await message.answer(
-            get_text('admin.messages.response_sent'),
+            get_text('admin.response_sent'),
             reply_markup=kb.markup_remove()
         )
         
         # Return to admin dashboard
-        await admin_support_dashboard(call=types.CallbackQuery(
-            id="fake",
-            from_user=message.from_user,
-            chat_instance="fake",
-            data="admin_support",
-            message=message
-        ), state=state)
+        text, markup = await build_admin_support_dashboard()
+        await message.answer(text, reply_markup=markup)
         
     except Exception as e:
         logging.error(f"Error in process_admin_response: {e}")
         await state.clear()
         await message.answer(
-            get_text('messages.error_occurred'),
+            get_text('error_occurred'),
             reply_markup=kb.markup_admin_support_dashboard()
         )
 
 
-@router.callback_query(lambda F: F.data.startswith('close_ticket:'))
+@router.callback_query(F.data.startswith('close_ticket:'))
 async def admin_close_ticket(call: types.CallbackQuery, state: FSMContext):
     """Close ticket"""
     data_admins = utils.get_admins()
@@ -648,7 +684,7 @@ async def admin_close_ticket(call: types.CallbackQuery, state: FSMContext):
     except Exception as e:
         logging.error(f"Error in admin_close_ticket: {e}")
         await call.message.edit_text(
-            get_text('messages.error_occurred'),
+            get_text('error_occurred'),
             reply_markup=kb.markup_admin_support_dashboard()
         )
 
@@ -694,22 +730,134 @@ async def show_support_statistics(call: types.CallbackQuery, state: FSMContext):
     except Exception as e:
         logging.error(f"Error in show_support_statistics: {e}")
         await call.message.edit_text(
-            get_text('messages.error_occurred'),
+            get_text('error_occurred'),
             reply_markup=kb.markup_admin_support_dashboard()
         )
 
+
+# ===== USER RESPOND HANDLERS =====
+
+@router.callback_query(F.data.startswith('user_respond_ticket:'))
+async def user_respond_ticket(call: types.CallbackQuery, state: FSMContext):
+    """Start user response to ticket"""
+    await call.answer()
+    try:
+        ticket_id = int(call.data.split(':')[1])
+        ticket = await support_ticket.get_ticket(ticket_id)
+        if not ticket or int(ticket.user_id) != int(call.from_user.id):
+            await call.message.edit_text(
+                "❌ Тикет не найден или доступ запрещен.",
+                reply_markup=kb.markup_support_menu()
+            )
+            return
+        await state.set_state(FSMSupport.waiting_response)
+        await state.update_data(ticket_id=ticket_id)
+        # Нужна ИНЛАЙН-клавиатура для edit_text
+        cancel_keyboard = InlineKeyboardMarkup(inline_keyboard=[
+            [InlineKeyboardButton(text="❌ Отмена", callback_data="cancel_support")]
+        ])
+        await call.message.edit_text(
+            "✍️ Введите ваш ответ по тикету:\n\n(Можно отправить текст, фото, видео или документ)",
+            reply_markup=cancel_keyboard
+        )
+    except Exception as e:
+        logging.exception(f"Error in user_respond_ticket: {e}")
+        await call.message.edit_text(
+            get_text('error_occurred'),
+            reply_markup=kb.markup_support_menu()
+        )
+
+
+@router.message(FSMSupport.waiting_response)
+async def process_user_response(message: types.Message, state: FSMContext):
+    """Process user response to ticket"""
+    if message.content_type not in ['text', 'photo', 'video', 'document']:
+        await message.answer(
+            "❌ Отправьте текст, фото, видео или документ:",
+            reply_markup=kb.markup_cancel()
+        )
+        return
+    try:
+        state_data = await state.get_data()
+        ticket_id = state_data.get('ticket_id')
+        ticket = await support_ticket.get_ticket(ticket_id)
+        if not ticket or int(ticket.user_id) != int(message.from_user.id):
+            await state.clear()
+            await message.answer(
+                "❌ Тикет не найден или доступ запрещен.",
+                reply_markup=kb.markup_support_menu()
+            )
+            return
+        # Prepare response
+        response_text = ""
+        message_type = message.content_type
+        file_id = None
+        if message.content_type == 'text':
+            response_text = message.text.strip()
+        elif message.content_type == 'photo':
+            response_text = message.caption or "Прикреплено изображение"
+            file_id = message.photo[-1].file_id
+        elif message.content_type == 'video':
+            response_text = message.caption or "Прикреплено видео"
+            file_id = message.video.file_id
+        elif message.content_type == 'document':
+            response_text = message.caption or f"Прикреплен документ: {message.document.file_name}"
+            file_id = message.document.file_id
+        # Save message
+        await ticket_message.create_message(
+            ticket_id=ticket_id,
+            sender_id=message.from_user.id,
+            sender_type='user',
+            message_text=response_text,
+            message_type=message_type,
+            file_id=file_id
+        )
+        # Optionally, mark ticket 'in_progress' if admin had responded before
+        await support_ticket.update_ticket(ticket_id, status='in_progress' if ticket.status == 'open' else ticket.status)
+        await state.clear()
+        await message.answer(
+            "✅ Ответ отправлен!",
+            reply_markup=kb.markup_remove()
+        )
+        # Return to support menu
+        await message.answer(
+            get_text('support_welcome'),
+            reply_markup=kb.markup_support_menu()
+        )
+    except Exception as e:
+        logging.exception(f"Error in process_user_response: {e}")
+        await state.clear()
+        await message.answer(
+            get_text('error_occurred'),
+            reply_markup=kb.markup_support_menu()
+        )
 
 # ===== NOTIFICATION FUNCTIONS =====
 
 async def notify_admins_new_ticket(ticket, user):
     """Notify admins about new ticket"""
     try:
-        admin_ids = list(config.ADMINS) + utils.get_admins()
+        # Надежное формирование списка админов
+        base_admins = list(config.ADMINS or [])
+        extra_admins = utils.get_admins() or []
+        if not isinstance(extra_admins, list):
+            logging.warning(f"utils.get_admins() вернул {type(extra_admins)}, ожидается list. Использую пустой список.")
+            extra_admins = []
+        # Уникализируем и фильтруем нечисловые значения
+        combined = []
+        for a in base_admins + extra_admins:
+            try:
+                val = int(a)
+                if val not in combined:
+                    combined.append(val)
+            except Exception:
+                logging.warning(f"Пропускаю некорректный admin id: {a}")
+        admin_ids = combined
         
         user_name = user.full_name or "Неизвестно"
         created_at = ticket.created_at.strftime("%d.%m.%Y %H:%M")
         
-        text = get_text('admin.messages.new_ticket_notification',
+        text = get_text('admin.new_ticket_notification',
                              subject=ticket.subject,
                              user_name=user_name,
                              user_id=ticket.user_id,
@@ -728,7 +876,7 @@ async def notify_admins_new_ticket(ticket, user):
 async def notify_user_response(ticket, admin_user):
     """Notify user about admin response"""
     try:
-        text = get_text('messages.ticket_response_notification',
+        text = get_text('ticket_response_notification',
                              ticket_id=ticket.id,
                              subject=ticket.subject)
         
@@ -741,7 +889,7 @@ async def notify_user_response(ticket, admin_user):
 async def notify_user_ticket_closed(ticket, admin_user):
     """Notify user about ticket closure"""
     try:
-        text = get_text('messages.ticket_closed_notification',
+        text = get_text('ticket_closed_notification',
                              ticket_id=ticket.id,
                              subject=ticket.subject)
         
@@ -766,20 +914,14 @@ async def cancel_support_operation(message: types.Message, state: FSMContext):
         if is_admin:
             await message.answer('❌ Отменено', reply_markup=kb.markup_remove())
             # Show admin dashboard
-            fake_call = types.CallbackQuery(
-                id="fake",
-                from_user=message.from_user,
-                chat_instance="fake",
-                data="admin_support",
-                message=message
-            )
-            await admin_support_dashboard(fake_call, state)
+            text, markup = await build_admin_support_dashboard()
+            await message.answer(text, reply_markup=markup)
         else:
             await message.answer(
                 '❌ Отменено',
                 reply_markup=kb.markup_remove()
             )
             await message.answer(
-                get_text('messages.support_welcome'),
-                reply_markup=kb.markup_support_menu()
+                get_text('welcome'),
+                reply_markup=kb.markup_main_menu()
             )

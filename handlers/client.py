@@ -15,6 +15,7 @@ from error_handling import TelegramErrorHandler, validate_telegram_file_id, heal
 
 # Import lesson and purchase
 from database import lesson
+from database.lead_magnet import LeadMagnet
 l = lesson.Lesson()
 p = lesson.Purchase()
 
@@ -28,64 +29,39 @@ logging.basicConfig(
 
 
 
-async def send_lead_lesson(message: types.Message, bot: Bot, lang: str = 'ru'):
-    """Send lead magnet lesson content (fixed flow)"""
+async def send_lead_magnet(message: types.Message, bot: Bot, lang: str = 'ru'):
+    """Send lead magnet video if enabled"""
     try:
-        lead_id = await l.ensure_lead_magnet()
-        if not lead_id:
-            print("❌ Не удалось получить лид-урок")
-            return
+        # Check if lead magnet is ready
+        if not await LeadMagnet.is_ready():
+            print("ℹ️ Lead magnet not ready (disabled or no video)")
+            return False
         
-        lesson_data = await l.get_lesson(lead_id)
-        if not lesson_data:
-            print("❌ Лид-урок не найден")
-            return
+        # Get lead magnet configuration
+        lead_magnet = await LeadMagnet.get_lead_magnet()
+        if not lead_magnet:
+            return False
         
         user_id = message.from_user.id
         
-        # Create purchase for lead magnet if not exists
-        if not await p.check_user_has_lesson(user_id, lead_id):
-            await p.create_purchase(
-                user_id=user_id,
-                lesson_id=lead_id,
-                price_paid_usd=0,
-                price_paid_stars=0,
-                payment_id="lead_magnet"
-            )
-            print("✅ Создан purchase для лид-урока")
+        # Get greeting text for user's locale
+        greeting_text = await LeadMagnet.get_text_for_locale('greeting_text', lang)
         
-        # Send video with caption from lesson
-        caption = f"📚 <b>{lesson_data.title}</b>\n\n{lesson_data.description}\n\n{lesson_data.text_content or ''}"
-        if lesson_data.video_file_id:
-            await bot.send_video(
-                chat_id=user_id,
-                video=lesson_data.video_file_id,
-                caption=caption,
-                parse_mode='HTML'
-            )
-        
-        # Send document if exists
-        if lesson_data.document_file_id:
-            doc_caption = lesson_data.text_content or get_text('after_video', lang)
-            await bot.send_document(
-                chat_id=user_id,
-                document=lesson_data.document_file_id,
-                caption=doc_caption,
-                parse_mode='HTML'
-            )
-        
-        # Send instruction message
-        await bot.send_message(
+        # Send video with greeting caption
+        await bot.send_video(
             chat_id=user_id,
-            text=get_text('after_video', lang),
-            reply_markup=kb.markup_main_menu()
+            video=lead_magnet.video_file_id,
+            caption=f"🎬 {greeting_text}",
+            parse_mode='HTML'
         )
         
-        print(f"✅ Лид-урок отправлен пользователю {user_id}")
+        print(f"✅ Lead magnet sent to user {user_id}")
+        return True
         
     except Exception as e:
-        print(f"❌ Ошибка отправки лид-урока: {e}")
-        logging.error(f"Ошибка отправки лид-урока: {e}")
+        print(f"❌ Error sending lead magnet: {e}")
+        logging.error(f"Error sending lead magnet: {e}")
+        return False
 
 
 async def join_request(message: types.ChatJoinRequest, state: FSMContext):
@@ -104,7 +80,7 @@ router = Router()
 
 @router.message(CommandStart())
 async def start(message: types.Message, state: FSMContext, bot: Bot):
-    # Fixed simple flow: /start -> welcome -> lead video -> main menu
+    # Fixed simple flow: /start -> welcome -> lead video (if enabled) -> main menu
     if message.from_user is None:
         print("❌ No from_user in start")
         return
@@ -122,15 +98,14 @@ async def start(message: types.Message, state: FSMContext, bot: Bot):
     if user_data is None:
         await u.create_user(user_id, message.from_user.username, message.from_user.full_name)
 
-    # Send welcome message
-    welcome_text = get_text('welcome', lang)
-    await message.answer(
-        welcome_text,
-        reply_markup=kb.markup_remove()
-    )
+    # 1. Send lead magnet video if enabled
+    lead_sent = await send_lead_magnet(message, bot, lang)
 
-    # Send intro video (lead lesson) - this will also show the main menu
-    await send_lead_lesson(message, bot, lang)
+    # 2. Send main menu with welcome message from localization
+    await message.answer(
+        get_text('welcome', lang),
+        reply_markup=kb.markup_main_menu(lang)
+    )
 
     # Mark onboarding as completed
     await u.mark_onboarding_complete(user_id)
