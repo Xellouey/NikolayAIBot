@@ -708,7 +708,7 @@ async def lesson_preview(call: types.CallbackQuery, state: FSMContext):
             )
         # Send separate clear button message
         clear_kb = InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text='🧹 Убрать предпросмотр', callback_data=f'lesson_preview_clear:{lesson_id}')]])
-        await bot.send_message(chat_id=admin_id, text=' ', reply_markup=clear_kb)
+        await bot.send_message(chat_id=admin_id, text='🧹 Нажмите, чтобы убрать предпросмотр', reply_markup=clear_kb)
         await call.answer('✅ Предпросмотр отправлен')
     except Exception as e:
         await call.answer('❌ Ошибка предпросмотра', show_alert=True)
@@ -721,7 +721,11 @@ async def lesson_preview_clear(call: types.CallbackQuery, state: FSMContext):
     try:
         admin_id = call.from_user.id
         from handlers.shop import clear_user_preview_messages
+        from message_manager import global_message_manager
         await clear_user_preview_messages(admin_id, admin_id)
+        # Удаляем и сообщение с кнопкой "Убрать предпросмотр"
+        if call.message:
+            await global_message_manager.delete_message_safe(call.message.chat.id, call.message.message_id)
         await call.answer('🧹 Предпросмотр удален')
     except Exception:
         await call.answer('❌ Ошибка удаления предпросмотра', show_alert=True)
