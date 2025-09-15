@@ -279,13 +279,13 @@ async def show_lesson_details(call: types.CallbackQuery, state: FSMContext):
 
         if lesson_data.content_type == 'video' and lesson_data.video_file_id:
             caption = f"📚 <b>{lesson_data.title}</b>\n\n{lesson_data.description or ''}"
-
+            
             # Удаляем сообщение и отправляем видео
             if call.message is not None:
-                delete_success = await global_message_manager.delete_message_safe(
+                await global_message_manager.delete_message_safe(
                     call.message.chat.id, call.message.message_id
-                )            
-
+                )
+            
             # Отправляем видео с fallback на текст
             video_message = await global_message_manager.send_media_safe(
                 chat_id=call.from_user.id,
@@ -293,10 +293,20 @@ async def show_lesson_details(call: types.CallbackQuery, state: FSMContext):
                 file_id=lesson_data.video_file_id,
                 caption=caption
             )
-
+            
             if video_message:
+                # После видео, если есть документ — отправляем его
+                if getattr(lesson_data, 'document_file_id', None):
+                    doc_message = await global_message_manager.send_media_safe(
+                        chat_id=call.from_user.id,
+                        media_type='document',
+                        file_id=lesson_data.document_file_id,
+                        caption="📁 Материалы урока"
+                    )
+                    if doc_message:
+                        await add_user_preview_message(call.from_user.id, doc_message.message_id)
                 # Уведомляем пользователя что урок отправлен
-                await call.answer("🎥 Урок отправлен! Вернитесь к меню через навигацию.")            
+                await call.answer("🎥 Урок отправлен! Вернитесь к меню через навигацию.")
             else:
                 # Fallback на текстовое сообщение
                 text = f"📚 <b>{lesson_data.title}</b>\n\n{lesson_data.description or ''}\n\n{lesson_data.text_content or ''}" 
@@ -304,7 +314,29 @@ async def show_lesson_details(call: types.CallbackQuery, state: FSMContext):
                     chat_id=call.from_user.id,
                     text=text,
                     reply_markup=kb.markup_main_menu()
-                )            
+                )
+        elif lesson_data.content_type == 'document' and getattr(lesson_data, 'document_file_id', None):
+            # Удаляем сообщение и отправляем документ
+            if call.message is not None:
+                await global_message_manager.delete_message_safe(
+                    call.message.chat.id, call.message.message_id
+                )
+            doc_message = await global_message_manager.send_media_safe(
+                chat_id=call.from_user.id,
+                media_type='document',
+                file_id=lesson_data.document_file_id,
+                caption=f"📚 <b>{lesson_data.title}</b>\n\n{lesson_data.description or ''}"
+            )
+            if doc_message:
+                await add_user_preview_message(call.from_user.id, doc_message.message_id)
+                await call.answer("📁 Урок отправлен! Вернитесь к меню через навигацию.")
+            else:
+                text = f"📚 <b>{lesson_data.title}</b>\n\n{lesson_data.description or ''}\n\nМатериалы временно недоступны"
+                await global_message_manager.send_message_safe(
+                    chat_id=call.from_user.id,
+                    text=text,
+                    reply_markup=kb.markup_main_menu()
+                )
         else:
             # Текстовый урок
             text = f"📚 <b>{lesson_data.title}</b>\n\n{lesson_data.description or ''}\n\n{lesson_data.text_content or ''}" 
@@ -312,7 +344,7 @@ async def show_lesson_details(call: types.CallbackQuery, state: FSMContext):
                 call.message,
                 text,
                 kb.markup_main_menu()
-            ) 
+            )
     else:        
  
         
@@ -490,7 +522,18 @@ async def view_lesson_content(call: types.CallbackQuery, state: FSMContext):
             if video_message:
                 await add_user_preview_message(call.from_user.id, video_message.message_id)
                 
-                # Отправляем новое меню после видео
+                # Если есть документ — отправляем его после видео
+                if getattr(lesson_data, 'document_file_id', None):
+                    doc_message = await global_message_manager.send_media_safe(
+                        chat_id=call.from_user.id,
+                        media_type='document',
+                        file_id=lesson_data.document_file_id,
+                        caption="📁 Материалы урока"
+                    )
+                    if doc_message:
+                        await add_user_preview_message(call.from_user.id, doc_message.message_id)
+                
+                # Отправляем новое меню после контента
                 menu_message = await global_message_manager.send_message_safe(
                     chat_id=call.from_user.id,
                     text=get_text('welcome'),
@@ -518,6 +561,40 @@ async def view_lesson_content(call: types.CallbackQuery, state: FSMContext):
                 # Уведомляем пользователя
                 await call.answer("❌ Не удалось загрузить видео, вернитесь через меню")
                 
+        elif lesson_data.content_type == 'document' and getattr(lesson_data, 'document_file_id', None):
+            
+            if call.message:
+                await global_message_manager.delete_message_safe(
+                    call.message.chat.id, call.message.message_id
+                )
+            
+            # Отправляем документ
+            doc_message = await global_message_manager.send_media_safe(
+                chat_id=call.from_user.id,
+                media_type='document',
+                file_id=lesson_data.document_file_id,
+                caption=f"📚 <b>{lesson_data.title}</b>\n\n{lesson_data.description or ''}"
+            )
+            
+            if doc_message:
+                await add_user_preview_message(call.from_user.id, doc_message.message_id)
+                
+                # Отправляем меню после документа
+                menu_message = await global_message_manager.send_message_safe(
+                    chat_id=call.from_user.id,
+                    text=get_text('welcome'),
+                    reply_markup=kb.markup_main_menu()
+                )
+                if menu_message:
+                    await add_user_preview_message(call.from_user.id, menu_message.message_id)
+                await call.answer("📁 Урок отправлен! Вернитесь к меню через навигацию.")
+            else:
+                text = f"📚 <b>{lesson_data.title}</b>\n\n{lesson_data.description or ''}\n\nМатериалы временно недоступны"
+                await global_message_manager.send_message_safe(
+                    chat_id=call.from_user.id,
+                    text=text,
+                    reply_markup=kb.markup_main_menu()
+                )
         else:
             
             if call.message:
@@ -536,7 +613,7 @@ async def view_lesson_content(call: types.CallbackQuery, state: FSMContext):
                     content_text = "📝 В этом уроке пока нет содержимого"
             elif lesson_data.content_type == 'video' and not lesson_data.video_file_id:
                 content_text = "🎥 В этом уроке пока нет видео"
-            elif lesson_data.content_type not in ['text', 'video']:
+            elif lesson_data.content_type not in ['text', 'video', 'document']:
                 content_text = f"📋 Содержимое типа '{lesson_data.content_type}' пока не поддерживается"
             else:
                 content_text = "📋 Содержимое урока временно недоступно"

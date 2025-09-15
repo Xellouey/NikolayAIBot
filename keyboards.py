@@ -312,6 +312,7 @@ def markup_lesson_edit_fields(lesson_id):
         [InlineKeyboardButton(text="📋 Описание", callback_data=f"edit_field:description:{lesson_id}")],
         [InlineKeyboardButton(text="💰 Цена", callback_data=f"edit_field:price:{lesson_id}")],
         [InlineKeyboardButton(text="🎬 Видео", callback_data=f"edit_field:video:{lesson_id}")],
+        [InlineKeyboardButton(text="📁 Документ", callback_data=f"edit_field:document:{lesson_id}")],
         [InlineKeyboardButton(text="🎭 Превью", callback_data=f"edit_field:preview:{lesson_id}")],
         [InlineKeyboardButton(text="✅ Активность", callback_data=f"toggle_active:{lesson_id}")],
         [InlineKeyboardButton(
