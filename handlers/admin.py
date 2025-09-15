@@ -1237,7 +1237,7 @@ async def text_key_selected(call: types.CallbackQuery, state: FSMContext):
     scenes = get_key_usage_scenes(key if category == 'messages' else f'btn_{key}')
     scenes_hint = ', '.join(scenes) if scenes else 'не определены'
     
-    await state.update_data(text_category=category, text_key=key)
+    await state.update_data(text_category=category, text_key=key, return_scene=None)
     await state.set_state(FSMSettings.text_value)
     
     await call.answer()
@@ -1343,7 +1343,7 @@ async def save_text_value(message: types.Message, state: FSMContext):
 
 @router.callback_query(F.data == 'text_save_confirm')
 async def text_save_confirm(call: types.CallbackQuery, state: FSMContext):
-    """Confirm and persist pending text value"""
+    """Confirm and persist pending text value; return to scene preview if editing initiated from preview"""
     data_admins = utils.get_admins()
     if(call.from_user.id not in config.ADMINS and call.from_user.id not in data_admins):
         await call.answer('⚠️ Ошибка доступа')
@@ -1354,6 +1354,7 @@ async def text_save_confirm(call: types.CallbackQuery, state: FSMContext):
     key = data.get('text_key')
     new_value = data.get('pending_text_value')
     old_value = data.get('old_text_value', '')
+    return_scene = data.get('return_scene')
 
     if not category or not key or new_value is None:
         await call.answer('⚠️ Нет данных для сохранения', show_alert=True)
@@ -1392,9 +1393,22 @@ async def text_save_confirm(call: types.CallbackQuery, state: FSMContext):
     except Exception as e:
         logging.error(f"Error saving audit log: {e}")
 
-    await state.clear()
     await call.answer('✅ Сохранено')
-    await call.message.edit_text('✅ Текст успешно сохранён!', reply_markup=kb.markup_text_categories())
+
+    if return_scene:
+        # Вернуться в предпросмотр сцены с обновлёнными текстами
+        try:
+            from text_meta import build_scene_preview
+            text, markup = await build_scene_preview(return_scene)
+            await call.message.edit_text(text, reply_markup=markup)
+        except Exception as e:
+            logging.error(f"Failed to return to scene preview {return_scene}: {e}")
+            await call.message.edit_text('✅ Текст успешно сохранён!', reply_markup=kb.markup_text_categories())
+        finally:
+            await state.clear()
+    else:
+        await state.clear()
+        await call.message.edit_text('✅ Текст успешно сохранён!', reply_markup=kb.markup_text_categories())
 
 
 @router.callback_query(F.data == 'text_edit_again')
@@ -1457,15 +1471,16 @@ async def scene_edit_key(call: types.CallbackQuery, state: FSMContext):
     if(call.from_user.id not in config.ADMINS and call.from_user.id not in data_admins):
         await call.answer('⚠️ Ошибка доступа')
         return
-    _, category, key = call.data.split(':', 2)
+    _, scene, category, key = call.data.split(':', 3)
     texts = utils.get_interface_texts()
-    current_value = texts.get('buttons', {}).get(key.replace('btn_', ''), '') if category == 'buttons' else ''
+    storage_key = key.replace('btn_', '') if key.startswith('btn_') else key
+    current_value = texts.get('buttons', {}).get(storage_key, '') if category == 'buttons' else ''
 
-    await state.update_data(text_category='buttons', text_key=key.replace('btn_', ''))
+    await state.update_data(text_category='buttons', text_key=storage_key, return_scene=scene)
     await state.set_state(FSMSettings.text_value)
     await call.answer()
     await call.message.edit_text(
-        f"📝 <b>Редактирование кнопки</b>\n\nКлюч: <b>{key}</b>\n\nТекущее значение:\n<code>{current_value}</code>\n\n👉 Отправьте новый текст для кнопки:",
+        f"📝 <b>Редактирование кнопки</b>\n\nСцена: <b>{scene}</b>\nКлюч: <b>{key}</b>\n\nТекущее значение:\n<code>{current_value}</code>\n\n👉 Отправьте новый текст для кнопки:",
         parse_mode='html'
     )
 
@@ -1477,7 +1492,7 @@ async def scene_edit_message(call: types.CallbackQuery, state: FSMContext):
     if(call.from_user.id not in config.ADMINS and call.from_user.id not in data_admins):
         await call.answer('⚠️ Ошибка доступа')
         return
-    dotted_key = call.data.split(':', 1)[1]
+    _, scene, dotted_key = call.data.split(':', 2)
     # dotted_key вида messages.welcome -> category=messages, key=welcome
     if '.' in dotted_key:
         category, key = dotted_key.split('.', 1)
@@ -1486,12 +1501,12 @@ async def scene_edit_message(call: types.CallbackQuery, state: FSMContext):
 
     texts = utils.get_interface_texts()
     current_value = texts.get(category, {}).get(key, '')
-    await state.update_data(text_category=category, text_key=key)
+    await state.update_data(text_category=category, text_key=key, return_scene=scene)
     await state.set_state(FSMSettings.text_value)
 
     await call.answer()
     await call.message.edit_text(
-        f"📝 <b>Редактирование текста экрана</b>\n\nКатегория: <b>{category}</b>\nКлюч: <b>{key}</b>\n\nТекущее значение:\n<code>{current_value}</code>\n\n👉 Отправьте новый текст:",
+        f"📝 <b>Редактирование текста экрана</b>\n\nСцена: <b>{scene}</b>\nКатегория: <b>{category}</b>\nКлюч: <b>{key}</b>\n\nТекущее значение:\n<code>{current_value}</code>\n\n👉 Отправьте новый текст:",
         parse_mode='html'
     )
 

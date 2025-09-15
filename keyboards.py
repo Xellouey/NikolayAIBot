@@ -556,6 +556,7 @@ def markup_preview_scenes():
         [InlineKeyboardButton(text="🏠 Главное меню", callback_data='scene_preview:main')],
         [InlineKeyboardButton(text="📚 Каталог", callback_data='scene_preview:catalog')],
         [InlineKeyboardButton(text="📝 Мои уроки", callback_data='scene_preview:my_lessons')],
+        [InlineKeyboardButton(text="📋 Карточка урока", callback_data='scene_preview:lesson_card')],
         [InlineKeyboardButton(text="💬 Поддержка", callback_data='scene_preview:support')],
         [InlineKeyboardButton(text="↪️ Назад", callback_data='text_settings')]
     ]

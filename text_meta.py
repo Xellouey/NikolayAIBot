@@ -35,6 +35,14 @@ async def build_scene(scene: str, user_id: int = 0, lang: str = 'ru') -> Tuple[s
         markup = await kb.markup_catalog(lessons)
         return text, markup
 
+    if scene == 'lesson_card':
+        # Карточка урока (пример, без учёта покупки)
+        sample_lesson = {'id': 301, 'title': 'Stable Diffusion PRO', 'description': 'Глубокий курс по SD', 'price_usd': 29.0}
+        from localization import get_text as t
+        text = t('messages.lesson_details', 'ru', title=sample_lesson['title'], price_usd=f"{sample_lesson['price_usd']:.2f}", price_stars='2900', description=sample_lesson['description']) if hasattr(t, '__call__') else 'Карточка урока'
+        markup = kb.markup_lesson_details(sample_lesson['id'], user_has_lesson=False, show_promocode=True, is_free=False, has_preview=True, lang=lang)
+        return text, markup
+
     if scene == 'my_lessons':
         lessons = []
         # Лид-магнит, если включен
@@ -73,10 +81,10 @@ async def build_scene_preview(scene: str, lang: str = 'ru') -> Tuple[str, Inline
     if scene == 'main':
         text = get_text('welcome', lang)
         items = [
-            [InlineKeyboardButton(text=get_text('btn_catalog', lang), callback_data='scene_edit_key:buttons:btn_catalog')],
-            [InlineKeyboardButton(text=get_text('btn_my_lessons', lang), callback_data='scene_edit_key:buttons:btn_my_lessons')],
-            [InlineKeyboardButton(text=get_text('btn_support', lang), callback_data='scene_edit_key:buttons:btn_support')],
-            [InlineKeyboardButton(text='✏️ Изменить текст экрана', callback_data='scene_edit_message:messages.welcome')],
+            [InlineKeyboardButton(text=get_text('btn_catalog', lang), callback_data='scene_edit_key:main:buttons:btn_catalog')],
+            [InlineKeyboardButton(text=get_text('btn_my_lessons', lang), callback_data='scene_edit_key:main:buttons:btn_my_lessons')],
+            [InlineKeyboardButton(text=get_text('btn_support', lang), callback_data='scene_edit_key:main:buttons:btn_support')],
+            [InlineKeyboardButton(text='✏️ Изменить текст экрана', callback_data='scene_edit_message:main:messages.welcome')],
             back_row()
         ]
         return text, InlineKeyboardMarkup(inline_keyboard=items)
@@ -84,8 +92,8 @@ async def build_scene_preview(scene: str, lang: str = 'ru') -> Tuple[str, Inline
     if scene == 'catalog':
         text = get_text('catalog_title', lang)
         items = [
-            [InlineKeyboardButton(text='✏️ Изменить текст экрана', callback_data='scene_edit_message:messages.catalog_title')],
-            [InlineKeyboardButton(text='✏️ Изменить кнопку Назад', callback_data='scene_edit_key:buttons:btn_back')],
+            [InlineKeyboardButton(text='✏️ Изменить текст экрана', callback_data='scene_edit_message:catalog:messages.catalog_title')],
+            [InlineKeyboardButton(text='✏️ Изменить кнопку Назад', callback_data='scene_edit_key:catalog:buttons:btn_back')],
             back_row()
         ]
         return text, InlineKeyboardMarkup(inline_keyboard=items)
@@ -93,8 +101,8 @@ async def build_scene_preview(scene: str, lang: str = 'ru') -> Tuple[str, Inline
     if scene == 'my_lessons':
         text = get_text('my_lessons_title', lang)
         items = [
-            [InlineKeyboardButton(text='✏️ Изменить текст экрана', callback_data='scene_edit_message:messages.my_lessons_title')],
-            [InlineKeyboardButton(text='✏️ Изменить кнопку Назад', callback_data='scene_edit_key:buttons:btn_back')],
+            [InlineKeyboardButton(text='✏️ Изменить текст экрана', callback_data='scene_edit_message:my_lessons:messages.my_lessons_title')],
+            [InlineKeyboardButton(text='✏️ Изменить кнопку Назад', callback_data='scene_edit_key:my_lessons:buttons:btn_back')],
             back_row()
         ]
         return text, InlineKeyboardMarkup(inline_keyboard=items)
@@ -102,8 +110,8 @@ async def build_scene_preview(scene: str, lang: str = 'ru') -> Tuple[str, Inline
     if scene == 'support':
         text = get_text('support_welcome', lang)
         items = [
-            [InlineKeyboardButton(text='✏️ Изменить текст экрана', callback_data='scene_edit_message:messages.support_welcome')],
-            [InlineKeyboardButton(text='✏️ Изменить кнопку Назад', callback_data='scene_edit_key:buttons:btn_back')],
+            [InlineKeyboardButton(text='✏️ Изменить текст экрана', callback_data='scene_edit_message:support:messages.support_welcome')],
+            [InlineKeyboardButton(text='✏️ Изменить кнопку Назад', callback_data='scene_edit_key:support:buttons:btn_back')],
             back_row()
         ]
         return text, InlineKeyboardMarkup(inline_keyboard=items)

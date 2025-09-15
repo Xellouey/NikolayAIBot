@@ -1,7 +1,7 @@
 {
     "buttons": {
         "my_lessons": "My lessons",
-        "catalog": "🛍 Каталог уроков",
+        "catalog": "🛍 Каталог уроков test",
         "back": "⬅️ Назад",
         "buy": "💳 Купить",
         "details": "📋 Подробнее",
@@ -27,7 +27,7 @@
     },
     "messages": {
         "welcome": "Главное меню:",
-        "catalog_title": "🛍️ Каталог уроков\n\nВыберите урок для изучения:",
+        "catalog_title": "🛍 Каталог уроков\n\nВыберите урок для изучения:",
         "my_lessons_title": "📚 Ваши уроки",
         "no_lessons": "У вас пока нет приобретенных уроков.\n\nПерейдите в каталог и выберите урок!",
         "lesson_details": "📋 <b>{title}</b>\n\n💰 Цена: ${price_usd} ({price_stars} ⭐)\n\n📝 {description}",
