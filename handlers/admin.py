@@ -658,6 +658,71 @@ async def toggle_lesson_active(call: types.CallbackQuery, state: FSMContext):
         await call.answer('❌ Ошибка обновления статуса')
 
 
+@router.callback_query(F.data.startswith('lesson_preview:'))
+async def lesson_preview(call: types.CallbackQuery, state: FSMContext):
+    """Send preview of lesson content (video + document) to admin"""
+    await call.answer()
+    try:
+        lesson_id = int(call.data.split(':')[1])
+        lesson_obj = await l.get_lesson(lesson_id)
+        if not lesson_obj:
+            await call.answer('❌ Урок не найден', show_alert=True)
+            return
+        admin_id = call.from_user.id
+        from bot_instance import bot
+        # Reuse tracking from shop
+        from handlers.shop import add_user_preview_message
+        # Send video if present
+        sent_any = False
+        if lesson_obj.content_type == 'video' and getattr(lesson_obj, 'video_file_id', None):
+            try:
+                msg = await bot.send_video(
+                    chat_id=admin_id,
+                    video=lesson_obj.video_file_id,
+                    caption=f"📚 <b>{lesson_obj.title}</b>\n\n{lesson_obj.description or ''}",
+                    parse_mode='HTML'
+                )
+                await add_user_preview_message(admin_id, msg.message_id)
+                sent_any = True
+            except Exception:
+                pass
+        # Send document if present
+        if getattr(lesson_obj, 'document_file_id', None):
+            try:
+                msg2 = await bot.send_document(
+                    chat_id=admin_id,
+                    document=lesson_obj.document_file_id,
+                    caption="📁 Материалы урока",
+                    parse_mode='HTML'
+                )
+                await add_user_preview_message(admin_id, msg2.message_id)
+                sent_any = True
+            except Exception:
+                pass
+        # Fallback to text preview if nothing sent
+        if not sent_any:
+            await call.message.answer(
+                f"📚 <b>{lesson_obj.title}</b>\n\n{lesson_obj.description or ''}\n\n{lesson_obj.text_content or '📝 Контент не загружен'}",
+                parse_mode='HTML'
+            )
+        await call.answer('✅ Предпросмотр отправлен')
+    except Exception as e:
+        await call.answer('❌ Ошибка предпросмотра', show_alert=True)
+
+
+@router.callback_query(F.data.startswith('lesson_preview_clear:'))
+async def lesson_preview_clear(call: types.CallbackQuery, state: FSMContext):
+    """Clear previously sent preview messages for admin"""
+    await call.answer()
+    try:
+        admin_id = call.from_user.id
+        from handlers.shop import clear_user_preview_messages
+        await clear_user_preview_messages(admin_id, admin_id)
+        await call.answer('🧹 Предпросмотр удален')
+    except Exception:
+        await call.answer('❌ Ошибка удаления предпросмотра', show_alert=True)
+
+
 # ===== Delete Lesson Handlers =====
 
 @router.callback_query(F.data == 'delete_lesson')
