@@ -97,6 +97,15 @@ async def build_scene_preview(scene: str, lang: str = 'ru') -> Tuple[str, Inline
         ]
         return text, InlineKeyboardMarkup(inline_keyboard=items)
 
+    if scene == 'profile':
+        # Профиль пользователя
+        text = get_text('profile_info', lang, full_name='Иван Иванов', lessons_count=3)
+        items = [
+            [InlineKeyboardButton(text='✏️ Изменить текст профиля', callback_data='scene_edit_message:profile:messages.profile_info')],
+            back_row()
+        ]
+        return text, InlineKeyboardMarkup(inline_keyboard=items)
+
     if scene == 'catalog':
         text = get_text('catalog_title', lang)
         items = [
@@ -120,6 +129,38 @@ async def build_scene_preview(scene: str, lang: str = 'ru') -> Tuple[str, Inline
         items = [
             [InlineKeyboardButton(text='✏️ Изменить текст экрана', callback_data='scene_edit_message:support:messages.support_welcome')],
             [InlineKeyboardButton(text='✏️ Изменить кнопку Назад', callback_data='scene_edit_key:support:buttons:btn_back')],
+            back_row()
+        ]
+        return text, InlineKeyboardMarkup(inline_keyboard=items)
+
+    if scene == 'support_subject':
+        text = get_text('ticket_subject_prompt', lang)
+        items = [
+            [InlineKeyboardButton(text='✏️ Изменить текст темы', callback_data='scene_edit_message:support_subject:messages.ticket_subject_prompt')],
+            back_row()
+        ]
+        return text, InlineKeyboardMarkup(inline_keyboard=items)
+
+    if scene == 'support_description':
+        text = get_text('ticket_description_prompt', lang)
+        items = [
+            [InlineKeyboardButton(text='✏️ Изменить текст описания', callback_data='scene_edit_message:support_description:messages.ticket_description_prompt')],
+            back_row()
+        ]
+        return text, InlineKeyboardMarkup(inline_keyboard=items)
+
+    if scene == 'support_my_tickets':
+        text = get_text('no_tickets', lang)
+        items = [
+            [InlineKeyboardButton(text='✏️ Изменить текст "нет тикетов"', callback_data='scene_edit_message:support_my_tickets:messages.no_tickets')],
+            back_row()
+        ]
+        return text, InlineKeyboardMarkup(inline_keyboard=items)
+
+    if scene == 'support_ticket_details':
+        text = get_text('ticket_details', lang, ticket_id=123, subject='Пример темы', status='🟢 Открыт', created_at='2025-01-01', description='Описание тикета...')
+        items = [
+            [InlineKeyboardButton(text='✏️ Изменить текст деталей тикета', callback_data='scene_edit_message:support_ticket_details:messages.ticket_details')],
             back_row()
         ]
         return text, InlineKeyboardMarkup(inline_keyboard=items)
@@ -165,8 +206,12 @@ KEY_USAGE: Dict[str, List[str]] = {
     'welcome': ['main'],
     'catalog_title': ['catalog'],
     'my_lessons_title': ['my_lessons'],
+    'profile_info': ['profile'],
     'support_welcome': ['support'],
-    'no_lessons': ['my_lessons'],
+    'ticket_subject_prompt': ['support_subject'],
+    'ticket_description_prompt': ['support_description'],
+    'no_tickets': ['support_my_tickets'],
+    'ticket_details': ['support_ticket_details'],
     'lesson_details': ['lesson_card', 'payment'],
     'enter_promocode': ['promocode', 'payment'],
     'promocode_invalid': ['promocode'],
