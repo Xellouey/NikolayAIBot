@@ -553,12 +553,13 @@ def markup_text_confirm():
 def markup_preview_scenes():
     """Top-level scenes preview menu"""
     items = [
-        [InlineKeyboardButton(text="🏠 Главное меню", callback_data='scene_preview:main'), InlineKeyboardButton(text="📚 Каталог", callback_data='scene_preview:catalog')],
-        [InlineKeyboardButton(text="📝 Мои уроки", callback_data='scene_preview:my_lessons'), InlineKeyboardButton(text="👤 Профиль", callback_data='scene_preview:profile')],
-        [InlineKeyboardButton(text="📋 Карточка урока", callback_data='scene_preview:lesson_card'), InlineKeyboardButton(text="💳 Оплата", callback_data='scene_preview:payment')],
-        [InlineKeyboardButton(text="🏷️ Промокод", callback_data='scene_preview:promocode'), InlineKeyboardButton(text="💬 Поддержка", callback_data='scene_preview:support')],
-        [InlineKeyboardButton(text="📝 Тема тикета", callback_data='scene_preview:support_subject'), InlineKeyboardButton(text="📝 Описание тикета", callback_data='scene_preview:support_description')],
-        [InlineKeyboardButton(text="📋 Мои тикеты", callback_data='scene_preview:support_my_tickets'), InlineKeyboardButton(text="📄 Детали тикета", callback_data='scene_preview:support_ticket_details')],
+        [InlineKeyboardButton(text="🏠 Главное меню", callback_data='scene_preview:main')],
+        [InlineKeyboardButton(text="📚 Каталог", callback_data='scene_preview:catalog')],
+        [InlineKeyboardButton(text="📝 Мои уроки", callback_data='scene_preview:my_lessons')],
+        [InlineKeyboardButton(text="📋 Карточка урока", callback_data='scene_preview:lesson_card')],
+        [InlineKeyboardButton(text="💳 Оплата", callback_data='scene_preview:payment')],
+        [InlineKeyboardButton(text="🏷️ Промокод", callback_data='scene_preview:promocode')],
+        [InlineKeyboardButton(text="💬 Поддержка", callback_data='scene_preview:support')],
         [InlineKeyboardButton(text="↪️ Назад", callback_data='text_settings')]
     ]
     return InlineKeyboardMarkup(inline_keyboard=items)
