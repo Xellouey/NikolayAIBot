@@ -43,7 +43,7 @@ DEFAULT_TEXTS = {
     
     # Catalog
     'catalog_title': '📚 Выберите урок для изучения:',
-    'lesson_price': '💰 Цена: {price} ⭐',
+'lesson_price': '💰 Цена: ${price}',
     'lesson_owned': '✅ Куплен',
     'btn_buy': '🛒 Купить',
     'btn_view': '👀 Смотреть',
@@ -104,7 +104,7 @@ DEFAULT_TEXTS = {
     'profile_info': '👤 <b>Ваш профиль</b>\n\n👤 Имя: {full_name}\n📚 Куплено уроков: {lessons_count}',
     'enter_promocode': '🎟️ Введите промокод:',
     'promocode_invalid': '❌ Недействительный промокод. Попробуйте другой.',
-    'promocode_applied': '✅ Промокод применен!\n\nСкидка: ${discount}\nИтоговая цена: ${final_price} ({final_stars} ⭐)',
+'promocode_applied': '✅ Промокод применен!\\n\\nСкидка: ${discount}\\nИтоговая цена: ${final_price}',
     
     # Admin messages (always in Russian) - also available without 'messages.' prefix
     'admin.support_dashboard': '📊 <b>Панель поддержки</b>\n\n📈 Всего тикетов: {total}\n🟢 Открытых: {open}\n🟡 В работе: {in_progress}\n🔴 Закрытых: {closed}',

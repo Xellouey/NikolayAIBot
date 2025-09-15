@@ -210,11 +210,19 @@ def markup_my_lessons(lessons):
 
 
 def markup_payment_confirm(lesson_id, price_usd, price_stars, promocode=None):
-    """Payment confirmation keyboard"""
+    """Payment confirmation keyboard (display USD to user; Stars used only in invoice)"""
     from localization import BACK_ICON
+    # Normalize USD to float with 2 decimals
+    try:
+        usd_value = float(price_usd)
+    except Exception:
+        try:
+            usd_value = float(str(price_usd))
+        except Exception:
+            usd_value = 0.0
     items = [
         [InlineKeyboardButton(
-            text=f"💳 Оплатить {price_stars} ⭐", 
+            text=f"💳 Оплатить ${usd_value:.2f}", 
             callback_data=f"pay:{lesson_id}:{promocode or 'none'}"
         )],
         [InlineKeyboardButton(

@@ -727,7 +727,7 @@ async def pay_with_optional_promocode(call: types.CallbackQuery, state: FSMConte
             start_parameter='stars-payment'
         )
         
-        text = f"💳 <b>Оплата урока</b>\n\n📚 {lesson_data.title}\n💰 Цена: {final_stars} ⭐ Stars\n\nНажмите кнопку оплаты ниже."
+        text = f"💳 <b>Оплата урока</b>\n\n📚 {lesson_data.title}\n💰 Цена: ${final_price_usd:.2f}\n\nНажмите кнопку оплаты ниже."
         
         from message_manager import global_message_manager
         success = await global_message_manager.edit_message_safe(
