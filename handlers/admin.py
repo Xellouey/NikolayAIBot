@@ -1175,85 +1175,10 @@ async def text_settings_menu(call: types.CallbackQuery, state: FSMContext):
     )
 
 
-@router.callback_query(F.data.startswith('text_category:'))
-async def text_category_selected(call: types.CallbackQuery, state: FSMContext):
-    """Handle text category selection"""
-    data_admins = utils.get_admins()
-    
-    if(call.from_user.id not in config.ADMINS and call.from_user.id not in data_admins):
-        await call.answer('⚠️ Ошибка доступа')
-        return
-    
-    category = call.data.split(':')[1]
-    
-    # Проверяем, что категория разрешена
-    allowed_categories = ['buttons', 'messages']
-    if category not in allowed_categories:
-        await call.answer('⚠️ Категория недоступна')
-        return
-    
-    await state.update_data(text_category=category)
-    
-    category_names = {
-        'buttons': '🔘 Кнопки',
-        'messages': '💬 Сообщения'
-    }
-    
-    category_name = category_names.get(category, category)
-    
-    await call.answer()
-    await call.message.edit_text(
-        f'📝 Категория: <b>{category_name}</b>\n\nВыберите текст для редактирования:',
-        parse_mode='html',
-        reply_markup=kb.markup_text_keys(category)
-    )
+# Удалён старый интерфейс выбора категорий/ключей в пользу предпросмотра сцен
 
 
-@router.callback_query(F.data.startswith('text_key:'))
-async def text_key_selected(call: types.CallbackQuery, state: FSMContext):
-    """Handle text key selection for editing"""
-    data_admins = utils.get_admins()
-    
-    if(call.from_user.id not in config.ADMINS and call.from_user.id not in data_admins):
-        await call.answer('⚠️ Ошибка доступа')
-        return
-    
-    parts = call.data.split(':')
-    category = parts[1]
-    key = parts[2]
-    
-    # Проверяем, что категория разрешена
-    allowed_categories = ['buttons', 'messages']
-    if category not in allowed_categories:
-        await call.answer('⚠️ Категория недоступна')
-        return
-    
-    # Получаем текущее значение
-    texts = utils.get_interface_texts()
-    current_value = texts.get(category, {}).get(key, '')
-
-    # Подсказка по сценам использования
-    from text_meta import get_key_usage_scenes
-    scenes = get_key_usage_scenes(key if category == 'messages' else f'btn_{key}')
-    scenes_hint = ', '.join(scenes) if scenes else 'не определены'
-    
-    await state.update_data(text_category=category, text_key=key, return_scene=None)
-    await state.set_state(FSMSettings.text_value)
-    
-    await call.answer()
-    await call.message.edit_text(
-        f'''📝 <b>Редактирование текста</b>
-
-Категория: <b>{category}</b>
-Ключ: <b>{key}</b>
-Где используется: <i>{scenes_hint}</i>
-
-Текущее значение:
-<code>{current_value}</code>
-
-👉 Отправьте новый текст для этого ключа:''',
-        parse_mode='html'
-    )
+# Удалён выбор конкретного ключа — редактирование теперь запускается из предпросмотра сцен
 
 
 @router.message(FSMSettings.text_value)

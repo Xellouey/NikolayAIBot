@@ -498,12 +498,9 @@ def markup_admin_ticket_actions(ticket_id, is_closed=False):
 
 
 def markup_text_categories():
-    """Markup for text categories selection"""
-    # Только пользовательские тексты - админка на русском и не нуждается в настройке
+    """Markup for text settings: only scenes preview and back"""
     items = [
         [InlineKeyboardButton(text="👀 Предпросмотр экранов", callback_data='scene_preview')],
-        [InlineKeyboardButton(text="🔘 Кнопки", callback_data='text_category:buttons')],
-        [InlineKeyboardButton(text="💬 Сообщения", callback_data='text_category:messages')],
         [InlineKeyboardButton(text="↩️ Назад к настройкам", callback_data='settings')]
     ]
     return InlineKeyboardMarkup(inline_keyboard=items)
@@ -556,7 +553,6 @@ def markup_preview_scenes():
         [InlineKeyboardButton(text="🏠 Главное меню", callback_data='scene_preview:main')],
         [InlineKeyboardButton(text="📚 Каталог", callback_data='scene_preview:catalog')],
         [InlineKeyboardButton(text="📝 Мои уроки", callback_data='scene_preview:my_lessons')],
-        [InlineKeyboardButton(text="📋 Карточка урока", callback_data='scene_preview:lesson_card')],
         [InlineKeyboardButton(text="💬 Поддержка", callback_data='scene_preview:support')],
         [InlineKeyboardButton(text="↪️ Назад", callback_data='text_settings')]
     ]
