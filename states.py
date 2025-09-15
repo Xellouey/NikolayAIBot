@@ -57,6 +57,7 @@ class FSMSettings(StatesGroup):
     text_category = State()
     text_key = State()
     text_value = State()
+    text_confirm = State()
 
 
 class FSMSupport(StatesGroup):

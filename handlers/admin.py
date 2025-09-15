@@ -1231,6 +1231,11 @@ async def text_key_selected(call: types.CallbackQuery, state: FSMContext):
     # Получаем текущее значение
     texts = utils.get_interface_texts()
     current_value = texts.get(category, {}).get(key, '')
+
+    # Подсказка по сценам использования
+    from text_meta import get_key_usage_scenes
+    scenes = get_key_usage_scenes(key if category == 'messages' else f'btn_{key}')
+    scenes_hint = ', '.join(scenes) if scenes else 'не определены'
     
     await state.update_data(text_category=category, text_key=key)
     await state.set_state(FSMSettings.text_value)
@@ -1241,6 +1246,7 @@ async def text_key_selected(call: types.CallbackQuery, state: FSMContext):
 
 Категория: <b>{category}</b>
 Ключ: <b>{key}</b>
+Где используется: <i>{scenes_hint}</i>
 
 Текущее значение:
 <code>{current_value}</code>
@@ -1252,36 +1258,36 @@ async def text_key_selected(call: types.CallbackQuery, state: FSMContext):
 
 @router.message(FSMSettings.text_value)
 async def save_text_value(message: types.Message, state: FSMContext):
-    """Save new text value with validation and logging"""
+    """Preview and confirm new text value before saving"""
     data = await state.get_data()
     category = data.get('text_category')
     key = data.get('text_key')
     new_value = message.text.strip()
-    
-    # Проверяем, что категория разрешена
+
+    # Проверки доступности категории
     allowed_categories = ['buttons', 'messages']
     if category not in allowed_categories:
         await message.answer('❌ Категория недоступна для редактирования')
         await state.clear()
         return
-    
-    # Валидация длины текста
+
+    # Базовая валидация длины
     if len(new_value) > 4096:
         await message.answer(
             '❌ <b>Ошибка!</b>\n\nТекст слишком длинный (максимум 4096 символов).\nПопробуйте сократить текст.',
             parse_mode='html'
         )
         return
-    
-    # Валидация для кнопок (максимум 64 символа)
+
+    # Для кнопок — короткий лимит
     if category == 'buttons' and len(new_value) > 64:
         await message.answer(
             '❌ <b>Ошибка!</b>\n\nТекст кнопки слишком длинный (максимум 64 символа).\nПопробуйте сократить текст.',
             parse_mode='html'
         )
         return
-    
-    # Проверка на опасные HTML теги
+
+    # Опасные теги
     dangerous_tags = ['<script', '<iframe', '<object', '<embed', '<form']
     if any(tag in new_value.lower() for tag in dangerous_tags):
         await message.answer(
@@ -1289,67 +1295,158 @@ async def save_text_value(message: types.Message, state: FSMContext):
             parse_mode='html'
         )
         return
-    
-    # Получаем старое значение для логирования
+
+    # Получаем старое значение
     texts = utils.get_interface_texts()
-    old_value = texts.get(category, {}).get(key, '')
-    
-    # Сохраняем новое значение
+    old_value = (texts.get(category, {}) or {}).get(key, '')
+
+    # Анализ плейсхолдеров
+    import re
+    placeholder_pattern = re.compile(r'\{([a-zA-Z_][a-zA-Z0-9_]*)\}')
+    old_placeholders = set(placeholder_pattern.findall(str(old_value))) if isinstance(old_value, str) else set()
+    new_placeholders = set(placeholder_pattern.findall(new_value))
+    missing = [ph for ph in old_placeholders if ph not in new_placeholders]
+
+    # Сохраняем в state для подтверждения
+    await state.update_data(pending_text_value=new_value, old_text_value=old_value)
+    await state.set_state(FSMSettings.text_confirm)
+
+    # Формируем предпросмотр: пробуем подставить мок-данные
+    mock_values = {
+        'price': '19.99', 'price_usd': '19.99', 'price_stars': '1999',
+        'final_price': '14.99', 'final_stars': '1499', 'discount': '5.00',
+        'full_name': 'Иван Иванов', 'lessons_count': '3', 'title': 'Пример урока',
+        'subject': 'Пример темы', 'ticket_id': '123', 'status': '🟢 Открыт', 'created_at': '2025-01-01'
+    }
+    preview_text = new_value
+    try:
+        preview_text = new_value.format(**mock_values)
+    except Exception:
+        # Если форматирование упало — показываем как есть
+        preview_text = new_value
+
+    # Собираем информативную карточку
+    warn_missing = ("\n⚠️ Отсутствуют плейсхолдеры: " + ', '.join('{'+m+'}' for m in missing)) if missing else ''
+    diff_header = "Было -> Стало"
+    preview_card = (
+        f"🧪 <b>Предпросмотр изменения</b>\n\n"
+        f"Категория: <b>{category}</b>\nКлюч: <b>{key}</b>\n"
+        f"Плейсхолдеры (старые): {', '.join('{'+p+'}' for p in sorted(old_placeholders)) or '—'}\n"
+        f"Плейсхолдеры (новые): {', '.join('{'+p+'}' for p in sorted(new_placeholders)) or '—'}{warn_missing}\n\n"
+        f"<b>{diff_header}</b>\n"
+        f"<b>Было:</b>\n<code>{str(old_value)[:1000]}</code>\n\n"
+        f"<b>Стало (как увидит пользователь):</b>\n{preview_text[:2000]}"
+    )
+
+    await message.answer(preview_card, parse_mode='html', reply_markup=kb.markup_text_confirm())
+
+
+@router.callback_query(F.data == 'text_save_confirm')
+async def text_save_confirm(call: types.CallbackQuery, state: FSMContext):
+    """Confirm and persist pending text value"""
+    data_admins = utils.get_admins()
+    if(call.from_user.id not in config.ADMINS and call.from_user.id not in data_admins):
+        await call.answer('⚠️ Ошибка доступа')
+        return
+
+    data = await state.get_data()
+    category = data.get('text_category')
+    key = data.get('text_key')
+    new_value = data.get('pending_text_value')
+    old_value = data.get('old_text_value', '')
+
+    if not category or not key or new_value is None:
+        await call.answer('⚠️ Нет данных для сохранения', show_alert=True)
+        return
+
+    texts = utils.get_interface_texts()
     if category not in texts:
         texts[category] = {}
     texts[category][key] = new_value
-    
-    # Сохраняем в файл
     utils.save_interface_texts(texts)
-    
-    # Логирование изменения
-    logging.info(f"Text edited by admin {message.from_user.id} ({message.from_user.full_name}): "
-                 f"category='{category}', key='{key}', "
-                 f"old='{old_value[:50]}...', new='{new_value[:50]}...'")
-    
-    # Сохраняем лог в файл для аудита
+
+    # Аудит
     try:
         import json
         from datetime import datetime
         audit_log = {
             'timestamp': datetime.now().isoformat(),
-            'admin_id': message.from_user.id,
-            'admin_name': message.from_user.full_name,
+            'admin_id': call.from_user.id,
+            'admin_name': call.from_user.full_name,
             'category': category,
             'key': key,
             'old_value': old_value,
             'new_value': new_value
         }
-        
-        # Добавляем в файл аудита
         audit_file = 'json/text_edits_audit.json'
         try:
             with open(audit_file, 'r', encoding='utf-8') as f:
                 audit_data = json.load(f)
         except (FileNotFoundError, json.JSONDecodeError):
             audit_data = []
-        
         audit_data.append(audit_log)
-        
-        # Сохраняем только последние 1000 записей
         if len(audit_data) > 1000:
             audit_data = audit_data[-1000:]
-        
         with open(audit_file, 'w', encoding='utf-8') as f:
             json.dump(audit_data, f, ensure_ascii=False, indent=2)
     except Exception as e:
         logging.error(f"Error saving audit log: {e}")
-    
-    await state.clear()
-    await message.answer(
-        f'''✅ <b>Текст успешно изменен!</b>
 
-Категория: <b>{category}</b>
-Ключ: <b>{key}</b>
-Новое значение: <code>{new_value}</code>''',
-        parse_mode='html',
-        reply_markup=kb.markup_text_categories()
-    )
+    await state.clear()
+    await call.answer('✅ Сохранено')
+    await call.message.edit_text('✅ Текст успешно сохранён!', reply_markup=kb.markup_text_categories())
+
+
+@router.callback_query(F.data == 'text_edit_again')
+async def text_edit_again(call: types.CallbackQuery, state: FSMContext):
+    """Return to editing the same key"""
+    data = await state.get_data()
+    category = data.get('text_category')
+    key = data.get('text_key')
+    await state.set_state(FSMSettings.text_value)
+    await call.answer('✏️ Измените текст и отправьте заново')
+
+
+@router.callback_query(F.data == 'text_cancel_edit')
+async def text_cancel_edit(call: types.CallbackQuery, state: FSMContext):
+    await state.clear()
+    await call.answer('↩️ Отменено')
+    await call.message.edit_text('📝 Настройки текстов', reply_markup=kb.markup_text_categories())
+
+
+@router.callback_query(F.data == 'scene_preview')
+async def scene_preview_menu(call: types.CallbackQuery, state: FSMContext):
+    """Top-level scenes preview menu"""
+    data_admins = utils.get_admins()
+    if(call.from_user.id not in config.ADMINS and call.from_user.id not in data_admins):
+        await call.answer('⚠️ Ошибка доступа')
+        return
+    await call.answer()
+    await call.message.edit_text('👀 Выберите экран для предпросмотра:', reply_markup=kb.markup_preview_scenes())
+
+
+@router.callback_query(F.data.startswith('scene_preview:'))
+async def scene_preview_build(call: types.CallbackQuery, state: FSMContext):
+    data_admins = utils.get_admins()
+    if(call.from_user.id not in config.ADMINS and call.from_user.id not in data_admins):
+        await call.answer('⚠️ Ошибка доступа')
+        return
+    scene = call.data.split(':', 1)[1]
+    from text_meta import build_scene
+    text, markup = await build_scene(scene)
+    await call.answer()
+    await call.message.edit_text(text, reply_markup=markup)
+
+
+@router.callback_query(F.data.startswith('preview_screen_for_key:'))
+async def preview_screen_for_key(call: types.CallbackQuery, state: FSMContext):
+    """Open scenes menu filtered by a key (simple: open generic scenes)"""
+    data_admins = utils.get_admins()
+    if(call.from_user.id not in config.ADMINS and call.from_user.id not in data_admins):
+        await call.answer('⚠️ Ошибка доступа')
+        return
+    await call.answer()
+    await call.message.edit_text('👀 Предпросмотр экранов', reply_markup=kb.markup_preview_scenes())
 
 
 # ===== CURRENCY RATE HANDLERS =====

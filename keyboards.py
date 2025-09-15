@@ -533,6 +533,29 @@ def markup_text_edit(key, category):
     """Markup for editing specific text key"""
     items = [
         [InlineKeyboardButton(text="✏️ Редактировать", callback_data=f'text_edit:{category}:{key}')],
+        [InlineKeyboardButton(text="👀 Предпросмотр экрана", callback_data=f'preview_screen_for_key:{category}:{key}')],
         [InlineKeyboardButton(text="↩️ Назад к ключам", callback_data=f'text_category:{category}')]
+    ]
+    return InlineKeyboardMarkup(inline_keyboard=items)
+
+
+def markup_text_confirm():
+    """Inline keyboard for confirming text change"""
+    items = [
+        [InlineKeyboardButton(text="✅ Сохранить", callback_data='text_save_confirm')],
+        [InlineKeyboardButton(text="✏️ Изменить", callback_data='text_edit_again')],
+        [InlineKeyboardButton(text="↩️ Отмена", callback_data='text_cancel_edit')]
+    ]
+    return InlineKeyboardMarkup(inline_keyboard=items)
+
+
+def markup_preview_scenes():
+    """Top-level scenes preview menu"""
+    items = [
+        [InlineKeyboardButton(text="🏠 Главное меню", callback_data='scene_preview:main')],
+        [InlineKeyboardButton(text="📚 Каталог", callback_data='scene_preview:catalog')],
+        [InlineKeyboardButton(text="📝 Мои уроки", callback_data='scene_preview:my_lessons')],
+        [InlineKeyboardButton(text="💬 Поддержка", callback_data='scene_preview:support')],
+        [InlineKeyboardButton(text="↪️ Назад", callback_data='text_settings')]
     ]
     return InlineKeyboardMarkup(inline_keyboard=items)
