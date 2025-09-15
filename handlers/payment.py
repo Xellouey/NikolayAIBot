@@ -31,23 +31,5 @@ def set_payment_token(token):
     PAYMENT_PROVIDER_TOKEN = token
 
 
-# For now, create simple placeholder payment handlers
-@payment_router.callback_query(lambda F: F.data.startswith('pay:'))
-async def create_invoice(call: types.CallbackQuery, state: FSMContext):
-    """Create payment placeholder"""
-    await call.answer()
-    
-    # For now, just show a message that payment is not configured yet
-    await call.message.edit_text(
-        "💳 Платежная система в разработке.\n\nПока что система готова, нужно только настроить Payment Provider Token в @BotFather.",
-        reply_markup=kb.markup_main_menu()
-    )
-
-
-@payment_router.message(F.successful_payment)
-async def process_successful_payment(message: types.Message):
-    """Handle successful payment placeholder"""
-    await message.answer(
-        "✅ Платеж успешно обработан!",
-        reply_markup=kb.markup_main_menu()
-    )
+# Payment router is currently unused; all payment flows are handled in handlers/shop.py
+# This module keeps token wiring for future providers if needed.
