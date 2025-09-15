@@ -1247,7 +1247,6 @@ async def save_text_value(message: types.Message, state: FSMContext):
     diff_header = "Было -> Стало"
     preview_card = (
         f"🧪 <b>Предпросмотр изменения</b>\n\n"
-        f"Категория: <b>{category}</b>\nКлюч: <b>{key}</b>\n"
         f"Плейсхолдеры (старые): {', '.join('{'+p+'}' for p in sorted(old_placeholders)) or '—'}\n"
         f"Плейсхолдеры (новые): {', '.join('{'+p+'}' for p in sorted(new_placeholders)) or '—'}{warn_missing}\n\n"
         f"<b>{diff_header}</b>\n"
@@ -1397,7 +1396,7 @@ async def scene_edit_key(call: types.CallbackQuery, state: FSMContext):
     await state.set_state(FSMSettings.text_value)
     await call.answer()
     await call.message.edit_text(
-        f"📝 <b>Редактирование кнопки</b>\n\nСцена: <b>{scene}</b>\nКлюч: <b>{key}</b>\n\nТекущее значение:\n<code>{current_value}</code>\n\n👉 Отправьте новый текст для кнопки:",
+        f"📝 <b>Редактирование кнопки</b>\n\nТекущее значение:\n<code>{current_value}</code>\n\n👉 Отправьте новый текст для кнопки:",
         parse_mode='html'
     )
 
@@ -1423,7 +1422,7 @@ async def scene_edit_message(call: types.CallbackQuery, state: FSMContext):
 
     await call.answer()
     await call.message.edit_text(
-        f"📝 <b>Редактирование текста экрана</b>\n\nСцена: <b>{scene}</b>\nКатегория: <b>{category}</b>\nКлюч: <b>{key}</b>\n\nТекущее значение:\n<code>{current_value}</code>\n\n👉 Отправьте новый текст:",
+        f"📝 <b>Редактирование текста</b>\n\nТекущее значение:\n<code>{current_value}</code>\n\n👉 Отправьте новый текст:",
         parse_mode='html'
     )
 
