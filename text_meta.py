@@ -43,14 +43,6 @@ async def build_scene(scene: str, user_id: int = 0, lang: str = 'ru') -> Tuple[s
         markup = kb.markup_lesson_details(sample_lesson['id'], user_has_lesson=False, show_promocode=True, is_free=False, has_preview=True, lang=lang)
         return text, markup
 
-    if scene == 'payment':
-        # Экран оплаты: используем карточку урока и кнопки оплаты/промокода
-        sample_lesson = {'id': 401, 'title': 'AI Копирайтинг', 'description': 'Научитесь писать с AI', 'price_usd': 25.0}
-        from localization import get_text as t
-        text = t('messages.lesson_details', 'ru', title=sample_lesson['title'], price_usd=f"{sample_lesson['price_usd']:.2f}", price_stars='2500', description=sample_lesson['description']) if hasattr(t, '__call__') else 'Оплата'
-        markup = kb.markup_lesson_details(sample_lesson['id'], user_has_lesson=False, show_promocode=True, is_free=False, has_preview=False, lang=lang)
-        return text, markup
-
     if scene == 'my_lessons':
         lessons = []
         # Лид-магнит, если включен
@@ -124,29 +116,6 @@ async def build_scene_preview(scene: str, lang: str = 'ru') -> Tuple[str, Inline
         ]
         return text, InlineKeyboardMarkup(inline_keyboard=items)
 
-    if scene == 'payment':
-        # Редактирование: текст карточки и кнопки Купить/Промокод
-        from localization import get_text as t
-        text = t('messages.lesson_details', 'ru', title='Название урока', price_usd='25.00', price_stars='2500', description='Описание урока')
-        items = [
-            [InlineKeyboardButton(text='✏️ Изменить текст карточки', callback_data='scene_edit_message:payment:messages.lesson_details')],
-            [InlineKeyboardButton(text='✏️ Изменить кнопку Купить', callback_data='scene_edit_key:payment:buttons:btn_buy')],
-            [InlineKeyboardButton(text='✏️ Изменить кнопку Ввести промокод', callback_data='scene_edit_key:payment:buttons:enter_promocode')],
-            back_row()
-        ]
-        return text, InlineKeyboardMarkup(inline_keyboard=items)
-
-    if scene == 'promocode':
-        # Редактирование ключей промокода
-        text = get_text('enter_promocode', lang)
-        items = [
-            [InlineKeyboardButton(text='✏️ Изменить текст "Введите промокод"', callback_data='scene_edit_message:promocode:messages.enter_promocode')],
-            [InlineKeyboardButton(text='✏️ Изменить текст "Промокод недействителен"', callback_data='scene_edit_message:promocode:messages.promocode_invalid')],
-            [InlineKeyboardButton(text='✏️ Изменить текст "Промокод применен"', callback_data='scene_edit_message:promocode:messages.promocode_applied')],
-            back_row()
-        ]
-        return text, InlineKeyboardMarkup(inline_keyboard=items)
-
     # Fallback
     return '❌ Сцена не найдена', InlineKeyboardMarkup(inline_keyboard=[back_row()])
 
@@ -158,8 +127,6 @@ KEY_USAGE: Dict[str, List[str]] = {
     'btn_my_lessons': ['main'],
     'btn_support': ['main'],
     'btn_back': ['catalog', 'my_lessons', 'support'],
-    'btn_buy': ['lesson_card', 'payment'],
-    'btn_enter_promocode': ['payment'],
 
     # Сообщения
     'welcome': ['main'],
@@ -167,10 +134,6 @@ KEY_USAGE: Dict[str, List[str]] = {
     'my_lessons_title': ['my_lessons'],
     'support_welcome': ['support'],
     'no_lessons': ['my_lessons'],
-    'lesson_details': ['lesson_card', 'payment'],
-    'enter_promocode': ['promocode', 'payment'],
-    'promocode_invalid': ['promocode'],
-    'promocode_applied': ['promocode'],
 }
 
 
