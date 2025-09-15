@@ -663,15 +663,6 @@ async def buy_lesson(call: types.CallbackQuery, state: FSMContext):
             start_parameter='stars-payment'
         )
 
-        # Update the message to show payment info
-        text = f"💳 <b>Оплата урока</b>\n\n📚 {lesson_data.title}\n💰 Цена: {price_stars} ⭐ Stars\n\nНажмите кнопку оплаты ниже."
-        if call.message:
-            await global_message_manager.edit_message_safe(
-                call.message,
-                text,
-                kb.markup_lesson_details(lesson_id, user_has_lesson=False)
-            )        
-        
     except Exception as e:
         logging.error(f"Error in buy_lesson: {e}")        
         if call.message:
@@ -726,19 +717,6 @@ async def pay_with_optional_promocode(call: types.CallbackQuery, state: FSMConte
             prices=[types.LabeledPrice(label=lesson_data.title, amount=final_stars)],
             start_parameter='stars-payment'
         )
-        
-        text = f"💳 <b>Оплата урока</b>\n\n📚 {lesson_data.title}\n💰 Цена: ${final_price_usd:.2f}\n\nНажмите кнопку оплаты ниже."
-        
-        from message_manager import global_message_manager
-        success = await global_message_manager.edit_message_safe(
-            call.message, text, kb.markup_lesson_details(lesson_id, user_has_lesson=False)
-        )
-        
-        if not success:
-            await global_message_manager.send_message_safe(
-                chat_id=call.message.chat.id, text=text, 
-                reply_markup=kb.markup_lesson_details(lesson_id, user_has_lesson=False)
-            )
     except Exception as e:
         logging.error(f"Error in pay_with_optional_promocode: {e}")
         from message_manager import global_message_manager
