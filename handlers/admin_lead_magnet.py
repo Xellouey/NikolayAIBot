@@ -84,6 +84,7 @@ async def lead_magnet_menu(call: types.CallbackQuery, state: FSMContext):
     media_type, media_id, doc_id = await LeadMagnet.get_content_bundle()
     has_media = media_id is not None
     has_doc = doc_id is not None
+    has_content = has_media or has_doc
     
     if has_media:
         media_status = '🎬 Видео загружено' if media_type == 'video' else '🖼️ Фото загружено'
@@ -108,7 +109,7 @@ async def lead_magnet_menu(call: types.CallbackQuery, state: FSMContext):
         text,
         reply_markup=markup_lead_magnet_menu(
             lead_magnet.enabled, 
-            content_type,
+            media_type,
             has_content
         ),
         parse_mode='HTML'

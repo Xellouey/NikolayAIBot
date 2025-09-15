@@ -18,6 +18,10 @@ class User(peewee.Model):
     onboarding_completed = peewee.BooleanField(default=False)
     last_onboarding_step = peewee.TextField(null=True)
     onboarding_completed_at = peewee.DateTimeField(null=True)
+    # Extended onboarding data
+    onboarding_goal = peewee.TextField(null=True)
+    onboarding_level = peewee.TextField(null=True)
+    consent_newsletter = peewee.BooleanField(default=False)
     
     class Meta:
         database = con   

@@ -4,6 +4,7 @@ from peewee import *
 from .core import con
 from .user import User
 from .lesson import Lesson, Promocode, SystemSettings
+from .onboarding import OnboardingStep, OnboardingOption, OnboardingEvent, ensure_default_flow
 from datetime import datetime
 
 class Support(peewee.Model):
@@ -33,7 +34,21 @@ class Mail(peewee.Model):
 def configure_database():
     """Настройка базы данных и безопасные миграции"""
     # Создание основных таблиц, если их нет
-    con.create_tables([User, Lesson, Support, Mail, Promocode, SystemSettings], safe=True)
+    con.create_tables([User, Lesson, Support, Mail, Promocode, SystemSettings, OnboardingStep, OnboardingOption, OnboardingEvent], safe=True)
+
+    # Безопасные ALTER для расширенных полей пользователя
+    try:
+        con.execute_sql("ALTER TABLE user ADD COLUMN onboarding_goal TEXT")
+    except Exception:
+        pass
+    try:
+        con.execute_sql("ALTER TABLE user ADD COLUMN onboarding_level TEXT")
+    except Exception:
+        pass
+    try:
+        con.execute_sql("ALTER TABLE user ADD COLUMN consent_newsletter BOOLEAN DEFAULT 0")
+    except Exception:
+        pass
 
     # Миграция для добавления message_text в Mail (идемпотентно)
     try:
@@ -67,6 +82,12 @@ def configure_database():
         # Скопируем данные, если старое поле существовало
         con.execute_sql("UPDATE promocode SET usage_count = used_count WHERE usage_count = 0")
         print("Данные usage_count скопированы из used_count")
+    except Exception:
+        pass
+
+    # Ensure default onboarding flow exists
+    try:
+        ensure_default_flow()
     except Exception:
         pass
 

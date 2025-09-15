@@ -282,6 +282,7 @@ def markup_admin_settings():
     """Admin settings keyboard - ALWAYS IN RUSSIAN"""
     items = [
         [InlineKeyboardButton(text='💱 Курс валют', callback_data='currency_rate')],
+        [InlineKeyboardButton(text='🧭 Онбординг', callback_data='onboarding_admin')],
         [InlineKeyboardButton(text='📝 Настройки текстов', callback_data='text_settings')],
         [InlineKeyboardButton(text='↪️ Назад', callback_data='backAdmin')]
     ]

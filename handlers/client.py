@@ -124,14 +124,26 @@ async def start(message: types.Message, state: FSMContext, bot: Bot):
     if user_data is None:
         await u.create_user(user_id, message.from_user.username, message.from_user.full_name)
 
-    # 1. Send lead magnet video if enabled
-    lead_sent = await send_lead_magnet(message, bot, lang)
+    # If onboarding enabled and not completed, start it
+    from database.onboarding import OnboardingStep
+    user_data = await u.get_user(user_id)
 
-    # 2. Send main menu with welcome message from localization
+    try:
+        steps_exist = OnboardingStep.select().count() > 0
+    except Exception:
+        steps_exist = False
+
+    if steps_exist and not user_data.get('onboarding_completed', False):
+        # Optionally send lead magnet before onboarding
+        await send_lead_magnet(message, bot, lang)
+        from handlers.onboarding import start_onboarding
+        await start_onboarding(message, state, preview=False)
+        return
+
+    # Fallback: lead magnet then main menu
+    await send_lead_magnet(message, bot, lang)
+
     await message.answer(
         get_text('welcome', lang),
         reply_markup=kb.markup_main_menu(lang)
     )
-
-    # Mark onboarding as completed
-    await u.mark_onboarding_complete(user_id)

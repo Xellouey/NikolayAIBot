@@ -88,5 +88,21 @@ class FSMLeadMagnet(StatesGroup):
     uploading_document = State()
 
 
+class FSMOnboardingAdmin(StatesGroup):
+    """States for onboarding steps constructor"""
+    add_key = State()
+    add_order = State()
+    add_text_key = State()
+    edit_value = State()
+
+
+class FSMOnboardingOption(StatesGroup):
+    """States for onboarding options constructor"""
+    add_value = State()
+    add_text_key = State()
+    add_order = State()
+    edit_value = State()
+
+
 # class FSMSuperPower(StatesGroup):
     # birthdate = State()

@@ -12,7 +12,7 @@ from aiogram import Bot, types, Router, F
 from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
 from aiogram.filters import Command, CommandStart
 from aiogram.fsm.context import FSMContext
-from states import FSMAdminRights, FSMLesson, FSMSettings, FSMPromocode, FSMTranslations
+from states import FSMAdminRights, FSMLesson, FSMSettings, FSMPromocode, FSMTranslations, FSMOnboardingAdmin, FSMOnboardingOption
 from typing import Optional
 
 # Добавляем импорт глобального bot из bot_instance
@@ -208,6 +208,25 @@ async def settings_menu(call: types.CallbackQuery, state: FSMContext):
         '⛙️ Настройки',
         reply_markup=kb.markup_admin_settings()
     )
+
+
+@router.callback_query(F.data == 'onboarding_admin')
+async def onboarding_admin_menu(call: types.CallbackQuery, state: FSMContext):
+    """Onboarding admin menu"""
+    data_admins = utils.get_admins()
+    if(call.from_user.id not in config.ADMINS and call.from_user.id not in data_admins):
+        await call.answer()
+        return
+    from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
+    kb_local = InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text='👁️ Предпросмотр', callback_data='onboarding_preview')],
+        [InlineKeyboardButton(text='🧹 Убрать предпросмотр', callback_data='onboarding_preview_clear')],
+        [InlineKeyboardButton(text='🧱 Конструктор шагов', callback_data='onb_steps')],
+        [InlineKeyboardButton(text='📝 Править тексты', callback_data='text_settings')],
+        [InlineKeyboardButton(text='↪️ Назад', callback_data='settings')]
+    ])
+    await call.answer()
+    await call.message.edit_text('🧭 Онбординг', reply_markup=kb_local)
 
 
 @router.callback_query(F.data == 'add_lesson')
@@ -1613,6 +1632,586 @@ async def statistics_menu(call: types.CallbackQuery, state: FSMContext):
             [InlineKeyboardButton(text='↪️ Назад', callback_data='backAdmin')]
         ])
     )
+
+
+# ===== ONBOARDING STEPS CONSTRUCTOR =====
+
+from database.onboarding import OnboardingStep, OnboardingOption
+
+ALLOWED_ONB_TYPES = ('screen', 'single_choice', 'multi_choice', 'consent')
+
+
+def _build_onb_steps_kb(steps):
+    rows = []
+    for s in steps:
+        actions = [
+            InlineKeyboardButton(text='✏️', callback_data=f'onb_step_edit:{s.id}'),
+        ]
+        # move up/down
+        actions.append(InlineKeyboardButton(text='🔼', callback_data=f'onb_move:{s.id}:up'))
+        actions.append(InlineKeyboardButton(text='🔽', callback_data=f'onb_move:{s.id}:down'))
+        # options only if not screen
+        if s.type != 'screen':
+            actions.append(InlineKeyboardButton(text='🧩', callback_data=f'onb_opts:{s.id}'))
+        actions.append(InlineKeyboardButton(text='🗑️', callback_data=f'onb_step_delete:{s.id}'))
+        rows.append(actions)
+    rows.append([InlineKeyboardButton(text='➕ Добавить шаг', callback_data='onb_step_add')])
+    rows.append([InlineKeyboardButton(text='↪️ Назад', callback_data='onboarding_admin')])
+    return InlineKeyboardMarkup(inline_keyboard=rows)
+
+
+def _format_onb_steps_text(steps):
+    lines = ["🧱 <b>Конструктор онбординга</b>", "\nШаги (в порядке выполнения):\n"]
+    for idx, s in enumerate(steps, start=1):
+        status = ('✅' if s.enabled else '🚫') + ('•' + ('❗' if s.required else '—'))
+        lines.append(f"{idx}. <code>{s.key}</code> — type: <b>{s.type}</b>, order: {s.order}, text: <code>{s.text_key or '—'}</code> {status}")
+    if not steps:
+        lines.append('📭 Шагов пока нет. Добавьте первый шаг!')
+    return '\n'.join(lines)
+
+
+@router.callback_query(F.data == 'onb_steps')
+async def onb_steps(call: types.CallbackQuery, state: FSMContext):
+    await call.answer()
+    steps = (OnboardingStep.select().order_by(OnboardingStep.order.asc()))
+    text = _format_onb_steps_text(list(steps))
+    kb_local = _build_onb_steps_kb(list(steps))
+    await call.message.edit_text(text, parse_mode='html', reply_markup=kb_local)
+
+
+@router.callback_query(F.data == 'onb_step_add')
+async def onb_step_add(call: types.CallbackQuery, state: FSMContext):
+    await call.answer()
+    await state.set_state(FSMOnboardingAdmin.add_key)
+    await call.message.edit_text('✏️ Введите ключ шага (латинские буквы, цифры и _):\n\nНапример: <code>welcome</code>, <code>goal</code>', parse_mode='html')
+
+
+@router.message(FSMOnboardingAdmin.add_key)
+async def onb_add_key(message: types.Message, state: FSMContext):
+    import re
+    key = (message.text or '').strip().lower()
+    if not re.match(r'^[a-z0-9_]+$', key):
+        await message.answer('❌ Некорректный ключ. Разрешены латинские буквы, цифры и нижнее подчеркивание. Повторите ввод:')
+        return
+    # uniqueness
+    if OnboardingStep.select().where(OnboardingStep.key == key).exists():
+        await message.answer('❌ Такой ключ уже существует. Введите другой:')
+        return
+    await state.update_data(new_step_key=key)
+    # ask type via inline
+    kb_types = InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text='ℹ️ screen', callback_data='onb_add_type:screen')],
+        [InlineKeyboardButton(text='🔘 single_choice', callback_data='onb_add_type:single_choice')],
+        [InlineKeyboardButton(text='☑ multi_choice', callback_data='onb_add_type:multi_choice')],
+        [InlineKeyboardButton(text='✅ consent', callback_data='onb_add_type:consent')]
+    ])
+    await message.answer('🧩 Выберите тип шага:', reply_markup=kb_types)
+
+
+@router.callback_query(F.data.startswith('onb_add_type:'))
+async def onb_add_type(call: types.CallbackQuery, state: FSMContext):
+    t = call.data.split(':', 1)[1]
+    if t not in ALLOWED_ONB_TYPES:
+        await call.answer('❌ Недопустимый тип')
+        return
+    await state.update_data(new_step_type=t)
+    await state.set_state(FSMOnboardingAdmin.add_order)
+    await call.answer()
+    await call.message.edit_text('🔢 Введите порядковый номер шага (целое число).\nОтправьте 0, чтобы поставить в конец.')
+
+
+@router.message(FSMOnboardingAdmin.add_order)
+async def onb_add_order(message: types.Message, state: FSMContext):
+    try:
+        order = int((message.text or '').strip())
+    except Exception:
+        await message.answer('❌ Нужно целое число. Попробуйте снова:')
+        return
+    # compute last if 0 or less
+    if order <= 0:
+        last = OnboardingStep.select().order_by(OnboardingStep.order.desc()).first()
+        order = (last.order + 1) if last else 1
+    await state.update_data(new_step_order=order)
+    await state.set_state(FSMOnboardingAdmin.add_text_key)
+    await message.answer('📝 Введите ключ текста для шага (например: <code>onboarding.welcome</code>) или отправьте <code>/skip</code>:', parse_mode='html')
+
+
+@router.message(FSMOnboardingAdmin.add_text_key)
+async def onb_add_text_key(message: types.Message, state: FSMContext):
+    text_key_raw = (message.text or '').strip()
+    text_key = None if text_key_raw == '/skip' else text_key_raw
+    data = await state.get_data()
+    key = data.get('new_step_key')
+    t = data.get('new_step_type')
+    order = data.get('new_step_order')
+    # required default: screens not required, others required
+    required_default = False if t == 'screen' else True
+    try:
+        OnboardingStep.create(key=key, type=t, order=order, text_key=text_key, enabled=True, required=required_default)
+        await message.answer('✅ Шаг создан')
+    except Exception as e:
+        await message.answer(f'❌ Ошибка создания: {e}')
+    await state.clear()
+    # Show list
+    steps = (OnboardingStep.select().order_by(OnboardingStep.order.asc()))
+    await message.answer(_format_onb_steps_text(list(steps)), parse_mode='html', reply_markup=_build_onb_steps_kb(list(steps)))
+
+
+@router.callback_query(F.data.startswith('onb_move:'))
+async def onb_step_move(call: types.CallbackQuery, state: FSMContext):
+    _, sid, direction = call.data.split(':', 2)
+    try:
+        sid = int(sid)
+        step = OnboardingStep.get_by_id(sid)
+    except Exception:
+        await call.answer('❌ Шаг не найден', show_alert=True)
+        return
+    steps = list(OnboardingStep.select().order_by(OnboardingStep.order.asc()))
+    idx = next((i for i, s in enumerate(steps) if s.id == sid), -1)
+    if idx == -1:
+        await call.answer('❌ Не найдено')
+        return
+    if direction == 'up' and idx > 0:
+        other = steps[idx - 1]
+    elif direction == 'down' and idx < len(steps) - 1:
+        other = steps[idx + 1]
+    else:
+        await call.answer()
+        return
+    # swap orders
+    step_order, other_order = step.order, other.order
+    step.order, other.order = other_order, step_order
+    step.save()
+    other.save()
+    await call.answer('✅ Порядок обновлён')
+    await onb_steps(call, state)
+
+
+@router.callback_query(F.data.startswith('onb_step_delete:'))
+async def onb_step_delete_confirm(call: types.CallbackQuery, state: FSMContext):
+    sid = int(call.data.split(':')[1])
+    try:
+        step = OnboardingStep.get_by_id(sid)
+    except Exception:
+        await call.answer('❌ Шаг не найден', show_alert=True)
+        return
+    kb_local = InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text='✅ Удалить', callback_data=f'onb_step_del_yes:{sid}')],
+        [InlineKeyboardButton(text='↩️ Отмена', callback_data='onb_steps')]
+    ])
+    await call.answer()
+    await call.message.edit_text(f"❗ Подтвердите удаление шага <code>{step.key}</code>", parse_mode='html', reply_markup=kb_local)
+
+
+@router.callback_query(F.data.startswith('onb_step_del_yes:'))
+async def onb_step_delete(call: types.CallbackQuery, state: FSMContext):
+    sid = int(call.data.split(':')[1])
+    try:
+        step = OnboardingStep.get_by_id(sid)
+        step.delete_instance(recursive=True)
+        await call.answer('✅ Удалено')
+    except Exception as e:
+        await call.answer(f'❌ Ошибка: {e}', show_alert=True)
+    await onb_steps(call, state)
+
+
+@router.callback_query(F.data.startswith('onb_step_edit:'))
+async def onb_step_edit(call: types.CallbackQuery, state: FSMContext):
+    sid = int(call.data.split(':')[1])
+    try:
+        step = OnboardingStep.get_by_id(sid)
+    except Exception:
+        await call.answer('❌ Шаг не найден', show_alert=True)
+        return
+    # Build edit menu
+    text = (
+        f"✏️ <b>Редактирование шага</b>\n\n"
+        f"key: <code>{step.key}</code>\n"
+        f"type: <b>{step.type}</b>\n"
+        f"order: <b>{step.order}</b>\n"
+        f"text_key: <code>{step.text_key or '—'}</code>\n"
+        f"enabled: {'✅' if step.enabled else '🚫'}\n"
+        f"required: {'❗' if step.required else '—'}\n"
+    )
+    rows = [
+        [InlineKeyboardButton(text='📝 Ключ', callback_data=f'onb_field:KEY:{sid}'), InlineKeyboardButton(text='🔢 Порядок', callback_data=f'onb_field:ORDER:{sid}')],
+        [InlineKeyboardButton(text='🧩 Тип', callback_data=f'onb_field:TYPE:{sid}'), InlineKeyboardButton(text='📝 Текстовый ключ', callback_data=f'onb_field:TEXT_KEY:{sid}')],
+        [InlineKeyboardButton(text=('✅ Включить' if not step.enabled else '🚫 Выключить'), callback_data=f'onb_toggle:enabled:{sid}')],
+        [InlineKeyboardButton(text=('❗ Обязательный' if not step.required else '— Необязательный'), callback_data=f'onb_toggle:required:{sid}')],
+    ]
+    if step.type != 'screen':
+        rows.append([InlineKeyboardButton(text='🧩 Опции', callback_data=f'onb_opts:{sid}')])
+    rows.append([InlineKeyboardButton(text='↪️ Назад', callback_data='onb_steps')])
+    await call.answer()
+    await call.message.edit_text(text, parse_mode='html', reply_markup=InlineKeyboardMarkup(inline_keyboard=rows))
+
+
+@router.callback_query(F.data.startswith('onb_field:TYPE:'))
+async def onb_step_change_type_prompt(call: types.CallbackQuery, state: FSMContext):
+    sid = int(call.data.split(':')[2])
+    kb_types = InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text='ℹ️ screen', callback_data=f'onb_change_type:{sid}:screen')],
+        [InlineKeyboardButton(text='🔘 single_choice', callback_data=f'onb_change_type:{sid}:single_choice')],
+        [InlineKeyboardButton(text='☑ multi_choice', callback_data=f'onb_change_type:{sid}:multi_choice')],
+        [InlineKeyboardButton(text='✅ consent', callback_data=f'onb_change_type:{sid}:consent')],
+        [InlineKeyboardButton(text='↩️ Отмена', callback_data=f'onb_step_edit:{sid}')]
+    ])
+    await call.answer()
+    await call.message.edit_text('🧩 Выберите новый тип:', reply_markup=kb_types)
+
+
+@router.callback_query(F.data.startswith('onb_change_type:'))
+async def onb_step_change_type(call: types.CallbackQuery, state: FSMContext):
+    _, sid, t = call.data.split(':', 2)
+    sid = int(sid)
+    if t not in ALLOWED_ONB_TYPES:
+        await call.answer('❌ Недопустимый тип')
+        return
+    try:
+        step = OnboardingStep.get_by_id(sid)
+        step.type = t
+        step.save()
+        await call.answer('✅ Тип обновлён')
+    except Exception as e:
+        await call.answer(f'❌ Ошибка: {e}', show_alert=True)
+    await onb_step_edit(call, state)
+
+
+@router.callback_query(F.data.startswith('onb_field:KEY:'))
+async def onb_step_edit_key(call: types.CallbackQuery, state: FSMContext):
+    sid = int(call.data.split(':')[2])
+    await state.update_data(edit_step_id=sid, edit_field='KEY')
+    await state.set_state(FSMOnboardingAdmin.edit_value)
+    await call.answer()
+    await call.message.edit_text('✏️ Введите новый ключ шага (латиница/цифры/_):')
+
+
+@router.callback_query(F.data.startswith('onb_field:ORDER:'))
+async def onb_step_edit_order(call: types.CallbackQuery, state: FSMContext):
+    sid = int(call.data.split(':')[2])
+    await state.update_data(edit_step_id=sid, edit_field='ORDER')
+    await state.set_state(FSMOnboardingAdmin.edit_value)
+    await call.answer()
+    await call.message.edit_text('🔢 Введите новый порядковый номер (целое число):')
+
+
+@router.callback_query(F.data.startswith('onb_field:TEXT_KEY:'))
+async def onb_step_edit_text_key(call: types.CallbackQuery, state: FSMContext):
+    sid = int(call.data.split(':')[2])
+    await state.update_data(edit_step_id=sid, edit_field='TEXT_KEY')
+    await state.set_state(FSMOnboardingAdmin.edit_value)
+    await call.answer()
+    await call.message.edit_text('📝 Введите новый текстовый ключ (например: onboarding.welcome) или /skip, чтобы очистить:')
+
+
+@router.message(FSMOnboardingAdmin.edit_value)
+async def onb_step_edit_value_save(message: types.Message, state: FSMContext):
+    import re
+    data = await state.get_data()
+    sid = data.get('edit_step_id')
+    field = data.get('edit_field')
+    try:
+        step = OnboardingStep.get_by_id(sid)
+    except Exception:
+        await state.clear()
+        await message.answer('❌ Шаг не найден')
+        return
+    text = (message.text or '').strip()
+    try:
+        if field == 'KEY':
+            if not re.match(r'^[a-z0-9_]+$', text.lower()):
+                await message.answer('❌ Некорректный ключ. Повторите:')
+                return
+            if OnboardingStep.select().where((OnboardingStep.key == text) & (OnboardingStep.id != sid)).exists():
+                await message.answer('❌ Такой ключ уже используется. Введите другой:')
+                return
+            step.key = text
+        elif field == 'ORDER':
+            new_order = int(text)
+            if new_order <= 0:
+                new_order = 1
+            step.order = new_order
+        elif field == 'TEXT_KEY':
+            if text == '/skip':
+                step.text_key = None
+            else:
+                step.text_key = text
+        step.save()
+        await message.answer('✅ Сохранено')
+    except ValueError:
+        await message.answer('❌ Нужно целое число')
+        return
+    except Exception as e:
+        await message.answer(f'❌ Ошибка: {e}')
+    await state.clear()
+    # Return to edit screen
+    # Send a callback-like refresh by rebuilding list view
+    steps = (OnboardingStep.select().order_by(OnboardingStep.order.asc()))
+    await message.answer(_format_onb_steps_text(list(steps)), parse_mode='html', reply_markup=_build_onb_steps_kb(list(steps)))
+
+
+@router.callback_query(F.data.startswith('onb_toggle:'))
+async def onb_step_toggle(call: types.CallbackQuery, state: FSMContext):
+    _, field, sid = call.data.split(':', 2)
+    sid = int(sid)
+    try:
+        step = OnboardingStep.get_by_id(sid)
+        if field == 'enabled':
+            step.enabled = not step.enabled
+        elif field == 'required':
+            step.required = not step.required
+        step.save()
+        await call.answer('✅ Обновлено')
+    except Exception as e:
+        await call.answer(f'❌ Ошибка: {e}', show_alert=True)
+    await onb_step_edit(call, state)
+
+
+# ===== OPTIONS MANAGEMENT =====
+
+def _build_onb_options_kb(step_id, options):
+    rows = []
+    for o in options:
+        rows.append([
+            InlineKeyboardButton(text='✏️', callback_data=f'onb_opt_edit:{o.id}'),
+            InlineKeyboardButton(text='🔼', callback_data=f'onb_opt_move:{o.id}:up'),
+            InlineKeyboardButton(text='🔽', callback_data=f'onb_opt_move:{o.id}:down'),
+            InlineKeyboardButton(text=('✅ Вкл' if not o.enabled else '🚫 Выкл'), callback_data=f'onb_opt_toggle:{o.id}'),
+            InlineKeyboardButton(text='🗑️', callback_data=f'onb_opt_delete:{o.id}')
+        ])
+    rows.append([InlineKeyboardButton(text='➕ Добавить опцию', callback_data=f'onb_opt_add:{step_id}')])
+    rows.append([InlineKeyboardButton(text='↪️ Назад к шагу', callback_data=f'onb_step_edit:{step_id}')])
+    rows.append([InlineKeyboardButton(text='🏗️ Шаги', callback_data='onb_steps')])
+    return InlineKeyboardMarkup(inline_keyboard=rows)
+
+
+def _format_onb_options_text(step, options):
+    lines = [f"🧩 <b>Опции шага</b> <code>{step.key}</code> (type: {step.type})\n"]
+    if not options:
+        lines.append('📭 Опций пока нет')
+    for idx, o in enumerate(options, start=1):
+        lines.append(f"{idx}. value: <code>{o.value}</code>, text_key: <code>{o.text_key}</code>, order: {o.order}, enabled: {'✅' if o.enabled else '🚫'}")
+    return '\n'.join(lines)
+
+
+@router.callback_query(F.data.startswith('onb_opts:'))
+async def onb_opts(call: types.CallbackQuery, state: FSMContext):
+    step_id = int(call.data.split(':')[1])
+    try:
+        step = OnboardingStep.get_by_id(step_id)
+    except Exception:
+        await call.answer('❌ Шаг не найден', show_alert=True)
+        return
+    options = list(OnboardingOption.select().where(OnboardingOption.step == step).order_by(OnboardingOption.order.asc()))
+    await call.answer()
+    await call.message.edit_text(_format_onb_options_text(step, options), parse_mode='html', reply_markup=_build_onb_options_kb(step_id, options))
+
+
+@router.callback_query(F.data.startswith('onb_opt_add:'))
+async def onb_opt_add(call: types.CallbackQuery, state: FSMContext):
+    step_id = int(call.data.split(':')[1])
+    await state.update_data(add_opt_step_id=step_id)
+    await state.set_state(FSMOnboardingOption.add_value)
+    await call.answer()
+    await call.message.edit_text('✏️ Введите value опции (латиница/цифры/_):')
+
+
+@router.message(FSMOnboardingOption.add_value)
+async def onb_opt_add_value(message: types.Message, state: FSMContext):
+    import re
+    val = (message.text or '').strip().lower()
+    if not re.match(r'^[a-z0-9_]+$', val):
+        await message.answer('❌ Некорректное value. Повторите:')
+        return
+    data = await state.get_data()
+    step_id = data.get('add_opt_step_id')
+    step = OnboardingStep.get_by_id(step_id)
+    if OnboardingOption.select().where((OnboardingOption.step == step) & (OnboardingOption.value == val)).exists():
+        await message.answer('❌ Такая опция уже существует для этого шага. Введите другое значение:')
+        return
+    await state.update_data(add_opt_value=val)
+    await state.set_state(FSMOnboardingOption.add_text_key)
+    await message.answer('📝 Введите текстовый ключ для опции (например: onboarding.goal.option.quick_start):')
+
+
+@router.message(FSMOnboardingOption.add_text_key)
+async def onb_opt_add_text_key(message: types.Message, state: FSMContext):
+    text_key = (message.text or '').strip()
+    if not text_key:
+        await message.answer('❌ Текстовый ключ обязателен. Введите:')
+        return
+    await state.update_data(add_opt_text_key=text_key)
+    await state.set_state(FSMOnboardingOption.add_order)
+    await message.answer('🔢 Введите порядковый номер опции (целое число, 0 — в конец):')
+
+
+@router.message(FSMOnboardingOption.add_order)
+async def onb_opt_add_order(message: types.Message, state: FSMContext):
+    try:
+        order = int((message.text or '').strip())
+    except Exception:
+        await message.answer('❌ Нужно целое число. Повторите:')
+        return
+    data = await state.get_data()
+    step_id = data.get('add_opt_step_id')
+    step = OnboardingStep.get_by_id(step_id)
+    if order <= 0:
+        last = (OnboardingOption.select().where(OnboardingOption.step == step).order_by(OnboardingOption.order.desc()).first())
+        order = (last.order + 1) if last else 1
+    try:
+        OnboardingOption.create(step=step, value=data.get('add_opt_value'), text_key=data.get('add_opt_text_key'), order=order, enabled=True)
+        await message.answer('✅ Опция добавлена')
+    except Exception as e:
+        await message.answer(f'❌ Ошибка: {e}')
+    await state.clear()
+    # Show options
+    options = list(OnboardingOption.select().where(OnboardingOption.step == step).order_by(OnboardingOption.order.asc()))
+    await message.answer(_format_onb_options_text(step, options), parse_mode='html', reply_markup=_build_onb_options_kb(step_id, options))
+
+
+@router.callback_query(F.data.startswith('onb_opt_toggle:'))
+async def onb_opt_toggle(call: types.CallbackQuery, state: FSMContext):
+    oid = int(call.data.split(':')[1])
+    try:
+        opt = OnboardingOption.get_by_id(oid)
+        opt.enabled = not opt.enabled
+        opt.save()
+        await call.answer('✅ Обновлено')
+        await onb_opts(call, state)
+    except Exception as e:
+        await call.answer(f'❌ Ошибка: {e}', show_alert=True)
+
+
+@router.callback_query(F.data.startswith('onb_opt_move:'))
+async def onb_opt_move(call: types.CallbackQuery, state: FSMContext):
+    _, oid, direction = call.data.split(':', 2)
+    oid = int(oid)
+    try:
+        opt = OnboardingOption.get_by_id(oid)
+        step = opt.step
+    except Exception:
+        await call.answer('❌ Опция не найдена', show_alert=True)
+        return
+    options = list(OnboardingOption.select().where(OnboardingOption.step == step).order_by(OnboardingOption.order.asc()))
+    idx = next((i for i, o in enumerate(options) if o.id == oid), -1)
+    if idx == -1:
+        await call.answer()
+        return
+    if direction == 'up' and idx > 0:
+        other = options[idx - 1]
+    elif direction == 'down' and idx < len(options) - 1:
+        other = options[idx + 1]
+    else:
+        await call.answer()
+        return
+    opt.order, other.order = other.order, opt.order
+    opt.save(); other.save()
+    await call.answer('✅ Порядок обновлён')
+    await onb_opts(call, state)
+
+
+@router.callback_query(F.data.startswith('onb_opt_delete:'))
+async def onb_opt_delete(call: types.CallbackQuery, state: FSMContext):
+    oid = int(call.data.split(':')[1])
+    try:
+        opt = OnboardingOption.get_by_id(oid)
+        step_id = opt.step.id
+        opt.delete_instance()
+        await call.answer('✅ Удалено')
+        # refresh
+        step = OnboardingStep.get_by_id(step_id)
+        options = list(OnboardingOption.select().where(OnboardingOption.step == step).order_by(OnboardingOption.order.asc()))
+        await call.message.edit_text(_format_onb_options_text(step, options), parse_mode='html', reply_markup=_build_onb_options_kb(step_id, options))
+    except Exception as e:
+        await call.answer(f'❌ Ошибка: {e}', show_alert=True)
+
+
+@router.callback_query(F.data.startswith('onb_opt_edit:'))
+async def onb_opt_edit(call: types.CallbackQuery, state: FSMContext):
+    oid = int(call.data.split(':')[1])
+    try:
+        opt = OnboardingOption.get_by_id(oid)
+    except Exception:
+        await call.answer('❌ Опция не найдена', show_alert=True)
+        return
+    text = (
+        f"✏️ <b>Опция</b>\n\n"
+        f"value: <code>{opt.value}</code>\n"
+        f"text_key: <code>{opt.text_key}</code>\n"
+        f"order: <b>{opt.order}</b>\n"
+        f"enabled: {'✅' if opt.enabled else '🚫'}\n"
+    )
+    rows = [
+        [InlineKeyboardButton(text='📝 value', callback_data=f'onb_opt_field:VALUE:{oid}'), InlineKeyboardButton(text='📝 text_key', callback_data=f'onb_opt_field:TEXT_KEY:{oid}')],
+        [InlineKeyboardButton(text='🔢 Порядок', callback_data=f'onb_opt_field:ORDER:{oid}')],
+        [InlineKeyboardButton(text=('✅ Вкл' if not opt.enabled else '🚫 Выкл'), callback_data=f'onb_opt_toggle:{oid}')],
+        [InlineKeyboardButton(text='↪️ Назад', callback_data=f'onb_opts:{opt.step.id}')]
+    ]
+    await call.answer()
+    await call.message.edit_text(text, parse_mode='html', reply_markup=InlineKeyboardMarkup(inline_keyboard=rows))
+
+
+@router.callback_query(F.data.startswith('onb_opt_field:'))
+async def onb_opt_field_edit(call: types.CallbackQuery, state: FSMContext):
+    _, field, oid = call.data.split(':', 2)
+    oid = int(oid)
+    await state.update_data(edit_opt_id=oid, edit_opt_field=field)
+    await state.set_state(FSMOnboardingOption.edit_value)
+    await call.answer()
+    if field == 'VALUE':
+        await call.message.edit_text('✏️ Введите новое value (латиница/цифры/_):')
+    elif field == 'TEXT_KEY':
+        await call.message.edit_text('📝 Введите новый text_key:')
+    else:
+        await call.message.edit_text('🔢 Введите новый порядок (целое число):')
+
+
+@router.message(FSMOnboardingOption.edit_value)
+async def onb_opt_edit_value_save(message: types.Message, state: FSMContext):
+    import re
+    data = await state.get_data()
+    oid = int(data.get('edit_opt_id'))
+    field = data.get('edit_opt_field')
+    try:
+        opt = OnboardingOption.get_by_id(oid)
+    except Exception:
+        await state.clear()
+        await message.answer('❌ Опция не найдена')
+        return
+    text = (message.text or '').strip()
+    try:
+        if field == 'VALUE':
+            if not re.match(r'^[a-z0-9_]+$', text.lower()):
+                await message.answer('❌ Некорректное value. Повторите:')
+                return
+            # uniqueness within step
+            if (OnboardingOption.select()
+                .where((OnboardingOption.step == opt.step) & (OnboardingOption.value == text) & (OnboardingOption.id != oid))
+               ).exists():
+                await message.answer('❌ Такое value уже используется в этом шаге. Другое:')
+                return
+            opt.value = text
+        elif field == 'TEXT_KEY':
+            if not text:
+                await message.answer('❌ text_key обязателен')
+                return
+            opt.text_key = text
+        else:  # ORDER
+            new_order = int(text)
+            if new_order <= 0:
+                new_order = 1
+            opt.order = new_order
+        opt.save()
+        await message.answer('✅ Сохранено')
+    except ValueError:
+        await message.answer('❌ Нужен целый номер')
+        return
+    except Exception as e:
+        await message.answer(f'❌ Ошибка: {e}')
+    step = opt.step
+    await state.clear()
+    options = list(OnboardingOption.select().where(OnboardingOption.step == step).order_by(OnboardingOption.order.asc()))
+    await message.answer(_format_onb_options_text(step, options), parse_mode='html', reply_markup=_build_onb_options_kb(step.id, options))
 
 
 # End of file
