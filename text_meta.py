@@ -1,6 +1,7 @@
 from typing import Tuple, Dict, Any, List
 from localization import get_text
 import keyboards as kb
+from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
 from database import lesson
 from database.lead_magnet import LeadMagnet
 
@@ -14,7 +15,7 @@ p = lesson.Purchase()
 
 async def build_scene(scene: str, user_id: int = 0, lang: str = 'ru') -> Tuple[str, Any]:
     """
-    Сконструировать текст и клавиатуру для заданной сцены.
+    Сконструировать текст и клавиатуру для заданной сцены (обычный режим).
     Возвращает (text, reply_markup)
     """
     scene = scene.lower()
@@ -57,6 +58,58 @@ async def build_scene(scene: str, user_id: int = 0, lang: str = 'ru') -> Tuple[s
 
     # Fallback
     return '❌ Сцена не найдена', kb.markup_main_menu(lang)
+
+
+async def build_scene_preview(scene: str, lang: str = 'ru') -> Tuple[str, InlineKeyboardMarkup]:
+    """
+    Сконструировать текст и клавиатуру для предпросмотра админом.
+    Кнопки в предпросмотре ведут на редактирование соответствующих ключей.
+    """
+    scene = scene.lower()
+
+    def back_row():
+        return [InlineKeyboardButton(text='↩️ Назад', callback_data='scene_preview')]
+
+    if scene == 'main':
+        text = get_text('welcome', lang)
+        items = [
+            [InlineKeyboardButton(text=get_text('btn_catalog', lang), callback_data='scene_edit_key:buttons:btn_catalog')],
+            [InlineKeyboardButton(text=get_text('btn_my_lessons', lang), callback_data='scene_edit_key:buttons:btn_my_lessons')],
+            [InlineKeyboardButton(text=get_text('btn_support', lang), callback_data='scene_edit_key:buttons:btn_support')],
+            [InlineKeyboardButton(text='✏️ Изменить текст экрана', callback_data='scene_edit_message:messages.welcome')],
+            back_row()
+        ]
+        return text, InlineKeyboardMarkup(inline_keyboard=items)
+
+    if scene == 'catalog':
+        text = get_text('catalog_title', lang)
+        items = [
+            [InlineKeyboardButton(text='✏️ Изменить текст экрана', callback_data='scene_edit_message:messages.catalog_title')],
+            [InlineKeyboardButton(text='✏️ Изменить кнопку Назад', callback_data='scene_edit_key:buttons:btn_back')],
+            back_row()
+        ]
+        return text, InlineKeyboardMarkup(inline_keyboard=items)
+
+    if scene == 'my_lessons':
+        text = get_text('my_lessons_title', lang)
+        items = [
+            [InlineKeyboardButton(text='✏️ Изменить текст экрана', callback_data='scene_edit_message:messages.my_lessons_title')],
+            [InlineKeyboardButton(text='✏️ Изменить кнопку Назад', callback_data='scene_edit_key:buttons:btn_back')],
+            back_row()
+        ]
+        return text, InlineKeyboardMarkup(inline_keyboard=items)
+
+    if scene == 'support':
+        text = get_text('support_welcome', lang)
+        items = [
+            [InlineKeyboardButton(text='✏️ Изменить текст экрана', callback_data='scene_edit_message:messages.support_welcome')],
+            [InlineKeyboardButton(text='✏️ Изменить кнопку Назад', callback_data='scene_edit_key:buttons:btn_back')],
+            back_row()
+        ]
+        return text, InlineKeyboardMarkup(inline_keyboard=items)
+
+    # Fallback
+    return '❌ Сцена не найдена', InlineKeyboardMarkup(inline_keyboard=[back_row()])
 
 
 # Мэппинг использования ключей на сцены для подсказки админам

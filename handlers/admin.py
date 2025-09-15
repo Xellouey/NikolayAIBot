@@ -1432,8 +1432,8 @@ async def scene_preview_build(call: types.CallbackQuery, state: FSMContext):
         await call.answer('⚠️ Ошибка доступа')
         return
     scene = call.data.split(':', 1)[1]
-    from text_meta import build_scene
-    text, markup = await build_scene(scene)
+    from text_meta import build_scene_preview
+    text, markup = await build_scene_preview(scene)
     await call.answer()
     await call.message.edit_text(text, reply_markup=markup)
 
@@ -1446,7 +1446,54 @@ async def preview_screen_for_key(call: types.CallbackQuery, state: FSMContext):
         await call.answer('⚠️ Ошибка доступа')
         return
     await call.answer()
+    # Можно сразу открыть подходящую сцену, но пока оставим общее меню
     await call.message.edit_text('👀 Предпросмотр экранов', reply_markup=kb.markup_preview_scenes())
+
+
+@router.callback_query(F.data.startswith('scene_edit_key:'))
+async def scene_edit_key(call: types.CallbackQuery, state: FSMContext):
+    """Начать редактирование кнопочного ключа прямо из предпросмотра"""
+    data_admins = utils.get_admins()
+    if(call.from_user.id not in config.ADMINS and call.from_user.id not in data_admins):
+        await call.answer('⚠️ Ошибка доступа')
+        return
+    _, category, key = call.data.split(':', 2)
+    texts = utils.get_interface_texts()
+    current_value = texts.get('buttons', {}).get(key.replace('btn_', ''), '') if category == 'buttons' else ''
+
+    await state.update_data(text_category='buttons', text_key=key.replace('btn_', ''))
+    await state.set_state(FSMSettings.text_value)
+    await call.answer()
+    await call.message.edit_text(
+        f"📝 <b>Редактирование кнопки</b>\n\nКлюч: <b>{key}</b>\n\nТекущее значение:\n<code>{current_value}</code>\n\n👉 Отправьте новый текст для кнопки:",
+        parse_mode='html'
+    )
+
+
+@router.callback_query(F.data.startswith('scene_edit_message:'))
+async def scene_edit_message(call: types.CallbackQuery, state: FSMContext):
+    """Начать редактирование текстового ключа экрана прямо из предпросмотра"""
+    data_admins = utils.get_admins()
+    if(call.from_user.id not in config.ADMINS and call.from_user.id not in data_admins):
+        await call.answer('⚠️ Ошибка доступа')
+        return
+    dotted_key = call.data.split(':', 1)[1]
+    # dotted_key вида messages.welcome -> category=messages, key=welcome
+    if '.' in dotted_key:
+        category, key = dotted_key.split('.', 1)
+    else:
+        category, key = 'messages', dotted_key
+
+    texts = utils.get_interface_texts()
+    current_value = texts.get(category, {}).get(key, '')
+    await state.update_data(text_category=category, text_key=key)
+    await state.set_state(FSMSettings.text_value)
+
+    await call.answer()
+    await call.message.edit_text(
+        f"📝 <b>Редактирование текста экрана</b>\n\nКатегория: <b>{category}</b>\nКлюч: <b>{key}</b>\n\nТекущее значение:\n<code>{current_value}</code>\n\n👉 Отправьте новый текст:",
+        parse_mode='html'
+    )
 
 
 # ===== CURRENCY RATE HANDLERS =====
