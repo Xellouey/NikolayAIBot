@@ -315,7 +315,6 @@ def markup_lesson_edit_fields(lesson_id):
         [InlineKeyboardButton(text="📁 Документ", callback_data=f"edit_field:document:{lesson_id}")],
         [InlineKeyboardButton(text="🎭 Превью", callback_data=f"edit_field:preview:{lesson_id}")],
         [InlineKeyboardButton(text="👁️ Предпросмотр", callback_data=f"lesson_preview:{lesson_id}")],
-        [InlineKeyboardButton(text="🧹 Убрать предпросмотр", callback_data=f"lesson_preview_clear:{lesson_id}")],
         [InlineKeyboardButton(text="✅ Активность", callback_data=f"toggle_active:{lesson_id}")],
         [InlineKeyboardButton(
             text='↪️ Назад', 

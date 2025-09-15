@@ -660,7 +660,7 @@ async def toggle_lesson_active(call: types.CallbackQuery, state: FSMContext):
 
 @router.callback_query(F.data.startswith('lesson_preview:'))
 async def lesson_preview(call: types.CallbackQuery, state: FSMContext):
-    """Send preview of lesson content (video + document) to admin"""
+    """Send preview of lesson content (video + document) to admin, then show a separate clear button message"""
     await call.answer()
     try:
         lesson_id = int(call.data.split(':')[1])
@@ -672,6 +672,7 @@ async def lesson_preview(call: types.CallbackQuery, state: FSMContext):
         from bot_instance import bot
         # Reuse tracking from shop
         from handlers.shop import add_user_preview_message
+        from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
         # Send video if present
         sent_any = False
         if lesson_obj.content_type == 'video' and getattr(lesson_obj, 'video_file_id', None):
@@ -705,6 +706,9 @@ async def lesson_preview(call: types.CallbackQuery, state: FSMContext):
                 f"📚 <b>{lesson_obj.title}</b>\n\n{lesson_obj.description or ''}\n\n{lesson_obj.text_content or '📝 Контент не загружен'}",
                 parse_mode='HTML'
             )
+        # Send separate clear button message
+        clear_kb = InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text='🧹 Убрать предпросмотр', callback_data=f'lesson_preview_clear:{lesson_id}')]])
+        await bot.send_message(chat_id=admin_id, text=' ', reply_markup=clear_kb)
         await call.answer('✅ Предпросмотр отправлен')
     except Exception as e:
         await call.answer('❌ Ошибка предпросмотра', show_alert=True)
