@@ -205,10 +205,18 @@ async def main():
         print("🛑 Нажмите Ctrl+C для остановки бота")
         print("-" * 50)
         
-        await dp.start_polling(bot)
-        
+        try:
+            await dp.start_polling(bot)
+        finally:
+            # Корректно закрываем Bot для предотвращения ошибки unclosed session
+            await bot.session.close()
+            
         # Ожидание завершения задачи при остановке
-        await scheduler_task
+        scheduler_task.cancel()
+        try:
+            await scheduler_task
+        except asyncio.CancelledError:
+            pass
         
     except Exception as e:
         print(f"❌ ОШИБКА: Не удалось запустить бота: {e}")

@@ -728,10 +728,28 @@ async def pay_with_optional_promocode(call: types.CallbackQuery, state: FSMConte
         )
         
         text = f"💳 <b>Оплата урока</b>\n\n📚 {lesson_data.title}\n💰 Цена: {final_stars} ⭐ Stars\n\nНажмите кнопку оплаты ниже."
-        await call.message.edit_text(text, reply_markup=kb.markup_lesson_details(lesson_id, user_has_lesson=False))
+        
+        from message_manager import global_message_manager
+        success = await global_message_manager.edit_message_safe(
+            call.message, text, kb.markup_lesson_details(lesson_id, user_has_lesson=False)
+        )
+        
+        if not success:
+            await global_message_manager.send_message_safe(
+                chat_id=call.message.chat.id, text=text, 
+                reply_markup=kb.markup_lesson_details(lesson_id, user_has_lesson=False)
+            )
     except Exception as e:
         logging.error(f"Error in pay_with_optional_promocode: {e}")
-        await call.message.edit_text(get_text('error_occurred'), reply_markup=kb.markup_main_menu())
+        from message_manager import global_message_manager
+        success = await global_message_manager.edit_message_safe(
+            call.message, get_text('error_occurred'), kb.markup_main_menu()
+        )
+        if not success:
+            await global_message_manager.send_message_safe(
+                chat_id=call.message.chat.id, text=get_text('error_occurred'), 
+                reply_markup=kb.markup_main_menu()
+            )
 
 
 @shop_router.pre_checkout_query()
@@ -819,10 +837,15 @@ async def enter_promocode(call: types.CallbackQuery, state: FSMContext):
         )
     except Exception as e:
         logging.error(f"Error in enter_promocode: {e}")
-        await call.message.edit_text(
-            get_text('error_occurred'),
-            reply_markup=kb.markup_main_menu()
-        )                 
+        from message_manager import global_message_manager
+        success = await global_message_manager.edit_message_safe(
+            call.message, get_text('error_occurred'), kb.markup_main_menu()
+        )
+        if not success:
+            await global_message_manager.send_message_safe(
+                chat_id=call.message.chat.id, text=get_text('error_occurred'), 
+                reply_markup=kb.markup_main_menu()
+            )
 
 
 
@@ -950,11 +973,22 @@ async def play_lead_magnet(call: types.CallbackQuery, state: FSMContext):
         if lead_message:
             await add_user_preview_message(user_id, lead_message.message_id)
         
-        # Send back to my lessons
-        await call.message.edit_text(
+        # Send back to my lessons - используем message_manager для безопасного редактирования
+        from message_manager import global_message_manager
+        
+        success = await global_message_manager.edit_message_safe(
+            call.message,
             get_text('my_lessons_title'),
-            reply_markup=kb.markup_my_lessons(await get_user_lessons_for_markup(user_id))
+            kb.markup_my_lessons(await get_user_lessons_for_markup(user_id))
         )
+        
+        # Если редактирование не удалось, отправляем новое сообщение
+        if not success:
+            await global_message_manager.send_message_safe(
+                chat_id=call.message.chat.id,
+                text=get_text('my_lessons_title'),
+                reply_markup=kb.markup_my_lessons(await get_user_lessons_for_markup(user_id))
+            )
         
     except Exception as e:
         logging.error(f"Error playing lead magnet: {e}")
@@ -999,15 +1033,19 @@ async def back_to_main(call: types.CallbackQuery, state: FSMContext):
     await state.clear()
     await clear_user_preview_messages(call.from_user.id, call.from_user.id)
     
-    try:
-        text = get_text('welcome')
-        await call.message.edit_text(
-            text,
-            reply_markup=kb.markup_main_menu()
-        )
-    except Exception as e:
-        logging.error(f"Error in back_to_main: {e}")          
-        await call.message.edit_text(
-            get_text('welcome'),
+    from message_manager import global_message_manager
+    
+    text = get_text('welcome')
+    success = await global_message_manager.edit_message_safe(
+        call.message,
+        text,
+        kb.markup_main_menu()
+    )
+    
+    # Если редактирование не удалось, отправляем новое сообщение
+    if not success:
+        await global_message_manager.send_message_safe(
+            chat_id=call.message.chat.id,
+            text=text,
             reply_markup=kb.markup_main_menu()
         )
