@@ -1153,7 +1153,7 @@ async def cancel_promocode(call: types.CallbackQuery, state: FSMContext):
 
 @router.callback_query(F.data == 'text_settings')
 async def text_settings_menu(call: types.CallbackQuery, state: FSMContext):
-    """Text settings menu - ADMIN ONLY"""
+    """Text settings menu - show scenes preview directly"""
     data_admins = utils.get_admins()
     
     if(call.from_user.id not in config.ADMINS and call.from_user.id not in data_admins):
@@ -1161,17 +1161,9 @@ async def text_settings_menu(call: types.CallbackQuery, state: FSMContext):
         return
     
     await call.answer()
-    
-    text = '''📝 <b>Настройки текстов</b>
-
-Здесь вы можете изменить любые тексты и кнопки бота.
-
-Выберите, что вы хотите изменить:'''
-    
     await call.message.edit_text(
-        text,
-        parse_mode='html',
-        reply_markup=kb.markup_text_categories()
+        '👀 Выберите экран для предпросмотра:',
+        reply_markup=kb.markup_preview_scenes()
     )
 
 
