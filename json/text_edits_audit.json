@@ -115,5 +115,23 @@
     "key": "my_lessons",
     "old_value": "📚 Мои уроки",
     "new_value": "My lessons"
+  },
+  {
+    "timestamp": "2025-09-15T13:14:54.117678",
+    "admin_id": 897676474,
+    "admin_name": "Дмитрий Митюк",
+    "category": "buttons",
+    "key": "my_lessons",
+    "old_value": "My lessons",
+    "new_value": "My lessons"
+  },
+  {
+    "timestamp": "2025-09-15T13:15:15.804538",
+    "admin_id": 897676474,
+    "admin_name": "Дмитрий Митюк",
+    "category": "buttons",
+    "key": "catalog",
+    "old_value": "🛍️ Каталог уроков",
+    "new_value": "🛍 Каталог уроков"
   }
 ]

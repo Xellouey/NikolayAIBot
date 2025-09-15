@@ -501,6 +501,7 @@ def markup_text_categories():
     """Markup for text categories selection"""
     # Только пользовательские тексты - админка на русском и не нуждается в настройке
     items = [
+        [InlineKeyboardButton(text="👀 Предпросмотр экранов", callback_data='scene_preview')],
         [InlineKeyboardButton(text="🔘 Кнопки", callback_data='text_category:buttons')],
         [InlineKeyboardButton(text="💬 Сообщения", callback_data='text_category:messages')],
         [InlineKeyboardButton(text="↩️ Назад к настройкам", callback_data='settings')]
