@@ -169,5 +169,41 @@
     "key": "catalog",
     "old_value": "🛍 Каталог уроков test",
     "new_value": "🛍 Каталог уроков test"
+  },
+  {
+    "timestamp": "2025-09-15T14:47:42.539474",
+    "admin_id": 897676474,
+    "admin_name": "Дмитрий Митюк",
+    "category": "buttons",
+    "key": "catalog",
+    "old_value": "🛍 Каталог уроков test",
+    "new_value": "🛍 Каталог уроков"
+  },
+  {
+    "timestamp": "2025-09-15T14:47:52.352592",
+    "admin_id": 897676474,
+    "admin_name": "Дмитрий Митюк",
+    "category": "buttons",
+    "key": "my_lessons",
+    "old_value": "My lessons",
+    "new_value": "My lessons"
+  },
+  {
+    "timestamp": "2025-09-15T14:48:15.906741",
+    "admin_id": 897676474,
+    "admin_name": "Дмитрий Митюк",
+    "category": "messages",
+    "key": "my_lessons_title",
+    "old_value": "📚 Ваши уроки",
+    "new_value": "📚 Ваши уроки"
+  },
+  {
+    "timestamp": "2025-09-15T14:48:38.639553",
+    "admin_id": 897676474,
+    "admin_name": "Дмитрий Митюк",
+    "category": "buttons",
+    "key": "back",
+    "old_value": "⬅️ Назад",
+    "new_value": "⬅️ Назад test"
   }
 ]

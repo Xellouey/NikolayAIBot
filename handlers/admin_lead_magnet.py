@@ -80,30 +80,26 @@ async def lead_magnet_menu(call: types.CallbackQuery, state: FSMContext):
         )
         return
     
-    # Определяем тип и наличие контента
-    content_type, file_id = await LeadMagnet.get_current_content()
-    has_content = file_id is not None
+    # Определяем наличие контента (медиа и документ отдельно)
+    media_type, media_id, doc_id = await LeadMagnet.get_content_bundle()
+    has_media = media_id is not None
+    has_doc = doc_id is not None
     
-    # Текст статуса контента
-    if has_content:
-        if content_type == 'video':
-            content_status = '🎬 Видео загружено'
-        elif content_type == 'photo':
-            content_status = '🖼️ Фото загружено'
-        elif content_type == 'document':
-            content_status = '📁 Файл загружен'
-        else:
-            content_status = '✅ Контент загружен'
+    if has_media:
+        media_status = '🎬 Видео загружено' if media_type == 'video' else '🖼️ Фото загружено'
     else:
-        content_status = '❌ Контент не загружен'
+        media_status = '❌ Медиа не загружено'
+    doc_status = '📁 Файл загружен' if has_doc else '❌ Файл не загружен'
     
     text = f"""
 🎬 <b>Управление лид-магнитом</b>
 
-Лид-магнит — это вводной контент (видео, фото или файл), который показывается новым пользователям при первом входе в бота.
+Лид-магнит — это вводной контент, который показывается новым пользователям при первом входе в бота.
+Теперь можно загрузить медиа (видео или фото) и дополнительно документ.
 
 📊 Текущий статус: {'✅ Включен' if lead_magnet.enabled else '❌ Выключен'}
-{content_status}
+{media_status}
+{doc_status}
 
 Выберите действие:
 """
@@ -273,8 +269,8 @@ async def process_video(message: types.Message, state: FSMContext):
         await message.answer("❌ Видео слишком большое. Максимум 50 МБ.")
         return
     
-    # Save video using new method
-    success = await LeadMagnet.set_content('video', video.file_id)
+    # Save video preserving document
+    success = await LeadMagnet.set_media('video', video.file_id)
     
     if success:
         await message.answer("✅ Видео успешно загружено!")
@@ -301,8 +297,8 @@ async def process_photo(message: types.Message, state: FSMContext):
         await message.answer("❌ Фото слишком большое. Максимум 10 МБ.")
         return
     
-    # Save photo using new method
-    success = await LeadMagnet.set_content('photo', photo.file_id)
+    # Save photo preserving document
+    success = await LeadMagnet.set_media('photo', photo.file_id)
     
     if success:
         await message.answer("✅ Фото успешно загружено!")
@@ -329,8 +325,8 @@ async def process_document(message: types.Message, state: FSMContext):
         await message.answer("❌ Файл слишком большой. Максимум 20 МБ.")
         return
     
-    # Save document using new method
-    success = await LeadMagnet.set_content('document', document.file_id)
+    # Save document preserving media
+    success = await LeadMagnet.set_document(document.file_id)
     
     if success:
         await message.answer("✅ Файл успешно загружен!")
@@ -469,36 +465,36 @@ async def lead_preview(call: types.CallbackQuery, state: FSMContext):
     await call.answer()
     
     lead_magnet = await LeadMagnet.get_lead_magnet()
-    content_type, file_id = await LeadMagnet.get_current_content()
+    media_type, media_id, doc_id = await LeadMagnet.get_content_bundle()
     
-    if not lead_magnet or not file_id:
+    if not lead_magnet or not (media_id or doc_id):
         await call.answer("❌ Контент не загружен", show_alert=True)
         return
     
     # Текст приветствия
     greeting_text = await LeadMagnet.get_text_for_locale('greeting_text', 'ru')
     
-    # Отправляем предпросмотр в зависимости от типа контента
+    # Отправляем предпросмотр: медиа (если есть) + документ (если есть)
     try:
-        if content_type == 'video':
+        if media_type == 'video' and media_id:
             await bot.send_video(
                 chat_id=call.from_user.id,
-                video=file_id,
+                video=media_id,
                 caption=f"🎬 <b>Предпросмотр лид-магнита</b>\n\n{greeting_text}",
                 parse_mode='HTML'
             )
-        elif content_type == 'photo':
+        elif media_type == 'photo' and media_id:
             await bot.send_photo(
                 chat_id=call.from_user.id,
-                photo=file_id,
+                photo=media_id,
                 caption=f"🖼️ <b>Предпросмотр лид-магнита</b>\n\n{greeting_text}",
                 parse_mode='HTML'
             )
-        elif content_type == 'document':
+        if doc_id:
             await bot.send_document(
                 chat_id=call.from_user.id,
-                document=file_id,
-                caption=f"📁 <b>Предпросмотр лид-магнита</b>\n\n{greeting_text}",
+                document=doc_id,
+                caption=f"📁 <b>Материалы лид-магнита</b>",
                 parse_mode='HTML'
             )
         

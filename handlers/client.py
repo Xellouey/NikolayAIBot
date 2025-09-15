@@ -47,42 +47,42 @@ async def send_lead_magnet(message: types.Message, bot: Bot, lang: str = 'ru'):
         # Get greeting text for user's locale
         greeting_text = await LeadMagnet.get_text_for_locale('greeting_text', lang)
         
-        # Get content type and file_id
-        content_type, file_id = await LeadMagnet.get_current_content()
-        
-        if not file_id:
+        # Get content bundle
+        media_type, media_id, doc_id = await LeadMagnet.get_content_bundle()
+        if not (media_id or doc_id):
             return False
         
-        # Send content based on type
+        from handlers.shop import add_user_preview_message
         lead_message = None
-        if content_type == 'video':
+        # Send media first if present
+        if media_type == 'video' and media_id:
             lead_message = await bot.send_video(
                 chat_id=user_id,
-                video=file_id,
+                video=media_id,
                 caption=f"🎬 {greeting_text}",
                 parse_mode='HTML'
             )
-        elif content_type == 'photo':
+        elif media_type == 'photo' and media_id:
             lead_message = await bot.send_photo(
                 chat_id=user_id,
-                photo=file_id,
+                photo=media_id,
                 caption=f"🖼️ {greeting_text}",
                 parse_mode='HTML'
             )
-        elif content_type == 'document':
-            lead_message = await bot.send_document(
+        # Track media message
+        if lead_message:
+            await add_user_preview_message(user_id, lead_message.message_id)
+        
+        # Send document second if present
+        if doc_id:
+            doc_msg = await bot.send_document(
                 chat_id=user_id,
-                document=file_id,
-                caption=f"📁 {greeting_text}",
+                document=doc_id,
+                caption=f"📁 Материалы урока",
                 parse_mode='HTML'
             )
-        else:
-            return False
-        
-        # Сохраняем message_id лид-магнита для последующего удаления
-        if lead_message:
-            from handlers.shop import add_user_preview_message
-            await add_user_preview_message(user_id, lead_message.message_id)
+            if doc_msg:
+                await add_user_preview_message(user_id, doc_msg.message_id)
 
         return True
         

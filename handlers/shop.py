@@ -907,11 +907,11 @@ async def play_lead_magnet(call: types.CallbackQuery, state: FSMContext):
     await call.answer()
     
     try:
-        # Get lead magnet configuration
+        # Get content bundle
         lead_magnet = await LeadMagnet.get_lead_magnet()
-        content_type, file_id = await LeadMagnet.get_current_content()
+        media_type, media_id, doc_id = await LeadMagnet.get_content_bundle()
         
-        if not lead_magnet or not file_id:
+        if not lead_magnet or not (media_id or doc_id):
             await call.answer("❌ Контент недоступен")
             return
         
@@ -923,33 +923,36 @@ async def play_lead_magnet(call: types.CallbackQuery, state: FSMContext):
         # Get greeting text for user's locale
         greeting_text = await LeadMagnet.get_text_for_locale('greeting_text', lang)
         
-        # Send content based on type
+        # Send media first if present
         lead_message = None
-        if content_type == 'video':
+        if media_type == 'video' and media_id:
             lead_message = await bot.send_video(
                 chat_id=user_id,
-                video=file_id,
+                video=media_id,
                 caption=f"🎬 {greeting_text}",
                 parse_mode='HTML'
             )
-        elif content_type == 'photo':
+        elif media_type == 'photo' and media_id:
             lead_message = await bot.send_photo(
                 chat_id=user_id,
-                photo=file_id,
+                photo=media_id,
                 caption=f"🖼️ {greeting_text}",
                 parse_mode='HTML'
             )
-        elif content_type == 'document':
-            lead_message = await bot.send_document(
-                chat_id=user_id,
-                document=file_id,
-                caption=f"📁 {greeting_text}",
-                parse_mode='HTML'
-            )
-        
-        # Сохраняем message_id лид-магнита для последующего удаления
+        # Track media message
         if lead_message:
             await add_user_preview_message(user_id, lead_message.message_id)
+        
+        # Send document second if present
+        if doc_id:
+            doc_msg = await bot.send_document(
+                chat_id=user_id,
+                document=doc_id,
+                caption=f"📁 Материалы лид-магнита",
+                parse_mode='HTML'
+            )
+            if doc_msg:
+                await add_user_preview_message(user_id, doc_msg.message_id)
         
         # Send back to my lessons - используем message_manager для безопасного редактирования
         from message_manager import global_message_manager

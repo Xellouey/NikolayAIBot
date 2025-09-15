@@ -107,25 +107,32 @@ class LeadMagnet(peewee.Model):
     
     @classmethod
     async def set_content(cls, content_type: str, file_id: str):
-        """Set content based on type"""
+        """Set content based on type (backward compatible). Preserves other kinds.
+        - If content_type is 'video' or 'photo': sets media and clears the alternative media, keeps document
+        - If content_type is 'document': sets document and keeps media
+        """
         try:
             lead_magnet = await cls.get_lead_magnet()
             if not lead_magnet:
                 return False
             
-            # Clear previous content
-            lead_magnet.video_file_id = None
-            lead_magnet.photo_file_id = None
-            lead_magnet.document_file_id = None
-            
-            # Set new content
-            lead_magnet.content_type = content_type
-            if content_type == 'video':
-                lead_magnet.video_file_id = file_id
-            elif content_type == 'photo':
-                lead_magnet.photo_file_id = file_id
+            if content_type in ('video', 'photo'):
+                # Set media: clear alternative media only
+                if content_type == 'video':
+                    lead_magnet.video_file_id = file_id
+                    lead_magnet.photo_file_id = None
+                    lead_magnet.content_type = 'video'
+                else:
+                    lead_magnet.photo_file_id = file_id
+                    lead_magnet.video_file_id = None
+                    lead_magnet.content_type = 'photo'
+                # keep document_file_id as is
             elif content_type == 'document':
+                # Set only document
                 lead_magnet.document_file_id = file_id
+                # keep media and content_type as is
+            else:
+                return False
             
             lead_magnet.updated_at = datetime.now()
             lead_magnet.save()
@@ -134,6 +141,41 @@ class LeadMagnet(peewee.Model):
         except Exception as e:
             logging.error(f"Error setting content: {e}")
             return False
+    
+    @classmethod
+    async def set_media(cls, content_type: str, file_id: str):
+        """Set media (video or photo), preserving document."""
+        if content_type not in ('video', 'photo'):
+            return False
+        return await cls.set_content(content_type, file_id)
+    
+    @classmethod
+    async def set_document(cls, file_id: str):
+        """Set document, preserving media."""
+        return await cls.set_content('document', file_id)
+    
+    @classmethod
+    async def get_content_bundle(cls):
+        """Get both media (type and id) and document id.
+        Returns: (media_type, media_file_id, document_file_id)
+        media_type can be 'video', 'photo', or None
+        """
+        try:
+            lead_magnet = await cls.get_lead_magnet()
+            if not lead_magnet:
+                return None, None, None
+            media_type = None
+            media_id = None
+            if lead_magnet.video_file_id:
+                media_type = 'video'
+                media_id = lead_magnet.video_file_id
+            elif lead_magnet.photo_file_id:
+                media_type = 'photo'
+                media_id = lead_magnet.photo_file_id
+            return media_type, media_id, lead_magnet.document_file_id
+        except Exception as e:
+            logging.error(f"Error getting content bundle: {e}")
+            return None, None, None
     
     @classmethod
     async def set_video(cls, file_id: str):
